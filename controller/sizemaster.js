@@ -86,3 +86,12 @@ exports.deleteSizeMaster = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.getSizeDropdown = async (req, res) => {
+  try {
+    const data = await SIZEMASTER.find({}, "name");
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

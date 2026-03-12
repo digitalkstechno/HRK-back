@@ -4,7 +4,7 @@ let Schema = mongoose.Schema;
 
 let ProductSchema = new Schema(
   {
-    name: {
+    designNo: {
       type: String,
       required: true,
     },
@@ -13,8 +13,14 @@ let ProductSchema = new Schema(
       required: true,
       unique: true,
     },
-    category: {
+    productCode: {
       type: String,
+      required: true,
+      unique: true,
+    },
+    category: {
+      type: Schema.Types.ObjectId,
+      ref: "CategoryMaster",
       required: true,
     },
     purchasePrice: {
@@ -25,22 +31,10 @@ let ProductSchema = new Schema(
       type: Number,
       required: true,
     },
-    barcode: {
-      type: String,
-      required: true,
-    },
     sizes: [
       {
-        size: {
-          type: Schema.Types.ObjectId,
-          ref: "SizeMaster",
-          required: true,
-        },
-        quantity: {
-          type: Number,
-          required: true,
-          default: 0,
-        },
+        type: Schema.Types.ObjectId,
+        ref: "SizeMaster",
       },
     ],
   },

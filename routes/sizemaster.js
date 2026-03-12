@@ -11,6 +11,7 @@ const authMiddleware = require("../middleware/auth");
 
 router.post("/create", authMiddleware, createSizeMaster);
 router.get("/", authMiddleware, fetchAllSizeMasters);
+router.get("/dropdown", authMiddleware, require("../controller/sizemaster").getSizeDropdown);
 router.get("/:id", authMiddleware, fetchSizeMasterById);
 router.put("/:id", authMiddleware, updateSizeMaster);
 router.delete("/:id", authMiddleware, deleteSizeMaster);
