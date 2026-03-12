@@ -18,7 +18,7 @@ exports.fetchAllTransportMasters = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       name: { $regex: search, $options: "i" },
     };
 
@@ -45,7 +45,7 @@ exports.fetchAllTransportMasters = async (req, res) => {
 
 exports.fetchTransportMasterById = async (req, res) => {
   try {
-    const transportMaster = await TRANSPORTMASTER.findOne({ _id: req.params.id, isDeleted: false });
+    const transportMaster = await TRANSPORTMASTER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!transportMaster) {
       return res.status(404).json({ success: false, message: "TransportMaster not found" });
     }

@@ -19,14 +19,14 @@ exports.createStockEntry = async (req, res) => {
   try {
     const { entryDate, supplierName, invoiceNumber, product: productId, totalSets } = req.body;
 
-    const product = await PRODUCT.findOne({ _id: productId, isDeleted: false });
+    const product = await PRODUCT.findOne({ _id: productId, isDeleted: { $ne: true } });
     if (!product) {
       return res.status(404).json({ success: false, message: "Product not found or has been deleted" });
     }
 
     // Determine Sequence Range per PRODUCT
     // Find the highest sequence number used for THIS specific product
-    const lastItem = await INVENTORYITEM.findOne({ product: productId, isDeleted: false })
+    const lastItem = await INVENTORYITEM.findOne({ product: productId, isDeleted: { $ne: true } })
       .sort({ sequenceNumber: -1 });
 
     const startSequence = lastItem ? lastItem.sequenceNumber + 1 : 100001;
@@ -79,7 +79,7 @@ exports.fetchAllStockEntries = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const query = { isDeleted: false };
+    const query = { isDeleted: { $ne: true } };
     const totalRecords = await STOCKENTRY.countDocuments(query);
     const data = await STOCKENTRY.find(query)
       .populate("product")
@@ -107,7 +107,7 @@ exports.getProductInventory = async (req, res) => {
     const productId = req.params.productId;
     const status = req.query.status; // 'In Stock' or 'Sold'
 
-    const query = { product: productId, isDeleted: false };
+    const query = { product: productId, isDeleted: { $ne: true } };
     if (status) {
       query.status = status;
     }

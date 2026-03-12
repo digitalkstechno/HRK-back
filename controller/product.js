@@ -6,13 +6,13 @@ exports.createProduct = async (req, res) => {
     const productCode = `${designNo}-${sku}`;
     
     // Check if SKU already exists (not deleted)
-    const existingSKU = await PRODUCT.findOne({ sku, isDeleted: false });
+    const existingSKU = await PRODUCT.findOne({ sku, isDeleted: { $ne: true } });
     if (existingSKU) {
       return res.status(400).json({ success: false, message: "SKU already exists" });
     }
 
     // Check if productCode already exists (not deleted)
-    const existingCode = await PRODUCT.findOne({ productCode, isDeleted: false });
+    const existingCode = await PRODUCT.findOne({ productCode, isDeleted: { $ne: true } });
     if (existingCode) {
       return res.status(400).json({ success: false, message: "Product with this Design No and SKU combination already exists" });
     }
@@ -32,7 +32,7 @@ exports.fetchAllProducts = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       $or: [
         { designNo: { $regex: search, $options: "i" } },
         { sku: { $regex: search, $options: "i" } },
@@ -66,7 +66,7 @@ exports.fetchAllProducts = async (req, res) => {
 
 exports.fetchProductById = async (req, res) => {
   try {
-    const product = await PRODUCT.findOne({ _id: req.params.id, isDeleted: false })
+    const product = await PRODUCT.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
       .populate("category")
       .populate("sizes");
     if (!product) {
@@ -84,13 +84,13 @@ exports.updateProduct = async (req, res) => {
     const productCode = `${designNo}-${sku}`;
     
     // Check if SKU already exists (excluding current product, not deleted)
-    const existingSKU = await PRODUCT.findOne({ sku, _id: { $ne: req.params.id }, isDeleted: false });
+    const existingSKU = await PRODUCT.findOne({ sku, _id: { $ne: req.params.id }, isDeleted: { $ne: true } });
     if (existingSKU) {
       return res.status(400).json({ success: false, message: "SKU already exists" });
     }
 
     // Check if productCode already exists (excluding current product, not deleted)
-    const existingCode = await PRODUCT.findOne({ productCode, _id: { $ne: req.params.id }, isDeleted: false });
+    const existingCode = await PRODUCT.findOne({ productCode, _id: { $ne: req.params.id }, isDeleted: { $ne: true } });
     if (existingCode) {
       return res.status(400).json({ success: false, message: "Product with this Design No and SKU combination already exists" });
     }

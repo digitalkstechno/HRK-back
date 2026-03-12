@@ -33,7 +33,7 @@ exports.createStaff = async (req, res) => {
 exports.loginStaff = async (req, res) => {
   try {
     const { email, password } = req.body;
-    let staffverify = await STAFF.findOne({ email, isDeleted: false });
+    let staffverify = await STAFF.findOne({ email, isDeleted: { $ne: true } });
     if (!staffverify) {
       throw new Error("Invalid Email or password");
     }
@@ -66,7 +66,7 @@ exports.fetchAllStaffs = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       $or: [
         { fullName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
@@ -102,7 +102,7 @@ exports.fetchAllStaffs = async (req, res) => {
 exports.fetchStaffById = async (req, res) => {
   try {
     let staffId = req.params.id;
-    let staffData = await STAFF.findOne({ _id: staffId, isDeleted: false });
+    let staffData = await STAFF.findOne({ _id: staffId, isDeleted: { $ne: true } });
     if (!staffData) {
       throw new Error("Staff not found");
     }
@@ -143,7 +143,7 @@ exports.getCurrentStaff = async (req, res) => {
 exports.staffUpdate = async (req, res) => {
   try {
     let staffId = req.params.id;
-    let oldStaff = await STAFF.findOne({ _id: staffId, isDeleted: false });
+    let oldStaff = await STAFF.findOne({ _id: staffId, isDeleted: { $ne: true } });
 
     if (!oldStaff) {
       throw new Error("Staff not found");
@@ -171,7 +171,7 @@ exports.staffUpdate = async (req, res) => {
 exports.staffDelete = async (req, res) => {
   try {
     let staffId = req.params.id;
-    let oldStaff = await STAFF.findOne({ _id: staffId, isDeleted: false });
+    let oldStaff = await STAFF.findOne({ _id: staffId, isDeleted: { $ne: true } });
 
     if (!oldStaff) {
       throw new Error("Staff not found");

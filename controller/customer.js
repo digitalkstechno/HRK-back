@@ -18,7 +18,7 @@ exports.fetchAllCustomers = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       $or: [
         { name: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
@@ -50,7 +50,7 @@ exports.fetchAllCustomers = async (req, res) => {
 
 exports.fetchCustomerById = async (req, res) => {
   try {
-    const customer = await CUSTOMER.findOne({ _id: req.params.id, isDeleted: false });
+    const customer = await CUSTOMER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!customer) {
       return res.status(404).json({ success: false, message: "Customer not found" });
     }

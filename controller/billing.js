@@ -18,7 +18,7 @@ exports.fetchAllBillings = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       $or: [
         { scanBarcode: { $regex: search, $options: "i" } },
       ],
@@ -49,7 +49,7 @@ exports.fetchAllBillings = async (req, res) => {
 
 exports.fetchBillingById = async (req, res) => {
   try {
-    const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: false }).populate("customer");
+    const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).populate("customer");
     if (!billing) {
       return res.status(404).json({ success: false, message: "Billing not found" });
     }

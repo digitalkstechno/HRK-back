@@ -18,7 +18,7 @@ exports.fetchAllReturns = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       $or: [
         { returnId: { $regex: search, $options: "i" } },
         { scanBarcode: { $regex: search, $options: "i" } },
@@ -51,7 +51,7 @@ exports.fetchAllReturns = async (req, res) => {
 
 exports.fetchReturnById = async (req, res) => {
   try {
-    const returnData = await RETURN.findOne({ _id: req.params.id, isDeleted: false }).populate("product customer");
+    const returnData = await RETURN.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).populate("product customer");
     if (!returnData) {
       return res.status(404).json({ success: false, message: "Return not found" });
     }

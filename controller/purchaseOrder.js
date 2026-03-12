@@ -18,7 +18,7 @@ exports.fetchAllPurchaseOrders = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
-      isDeleted: false,
+      isDeleted: { $ne: true },
       $or: [
         { orderId: { $regex: search, $options: "i" } },
         { supplier: { $regex: search, $options: "i" } },
@@ -50,7 +50,7 @@ exports.fetchAllPurchaseOrders = async (req, res) => {
 
 exports.fetchPurchaseOrderById = async (req, res) => {
   try {
-    const purchaseOrder = await PURCHASEORDER.findOne({ _id: req.params.id, isDeleted: false });
+    const purchaseOrder = await PURCHASEORDER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!purchaseOrder) {
       return res.status(404).json({ success: false, message: "PurchaseOrder not found" });
     }
