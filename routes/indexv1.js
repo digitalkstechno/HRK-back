@@ -11,5 +11,9 @@ router.use("/billing", require("./billing"));
 router.use("/return", require("./return"));
 router.use("/saleorder", require("./saleOrder"));
 router.use("/purchaseorder", require("./purchaseOrder"));
+router.use("/categorymaster", require("./categorymaster"));
+router.use("/transportmaster", require("./transportmaster"));
+
+
 
 module.exports = router;
