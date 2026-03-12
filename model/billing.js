@@ -4,22 +4,27 @@ let Schema = mongoose.Schema;
 
 let BillingSchema = new Schema(
   {
+    billNumber: {
+      type: String,
+      unique: true,
+    },
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
       required: true,
     },
-    scanBarcode: {
-      type: String,
-      required: true,
-    },
     items: [
       {
+        product: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
         productName: {
           type: String,
           required: true,
         },
-        size: {
+        barcode: {
           type: String,
           required: true,
         },
@@ -37,6 +42,11 @@ let BillingSchema = new Schema(
         },
       },
     ],
+    totalAmount: {
+        type: Number,
+        required: true,
+        default: 0
+    },
     isDeleted: {
       type: Boolean,
       default: false,
