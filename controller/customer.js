@@ -18,6 +18,7 @@ exports.fetchAllCustomers = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
+      isDeleted: false,
       $or: [
         { name: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
@@ -49,7 +50,7 @@ exports.fetchAllCustomers = async (req, res) => {
 
 exports.fetchCustomerById = async (req, res) => {
   try {
-    const customer = await CUSTOMER.findById(req.params.id);
+    const customer = await CUSTOMER.findOne({ _id: req.params.id, isDeleted: false });
     if (!customer) {
       return res.status(404).json({ success: false, message: "Customer not found" });
     }
@@ -78,7 +79,7 @@ exports.updateCustomer = async (req, res) => {
 
 exports.deleteCustomer = async (req, res) => {
   try {
-    const customer = await CUSTOMER.findByIdAndDelete(req.params.id);
+    const customer = await CUSTOMER.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
     if (!customer) {
       return res.status(404).json({ success: false, message: "Customer not found" });
     }

@@ -33,7 +33,11 @@ const inventoryItemSchema = new Schema(
     billId: {
       type: Schema.Types.ObjectId,
       ref: "Bill",
-    }
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

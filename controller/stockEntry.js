@@ -19,14 +19,14 @@ exports.createStockEntry = async (req, res) => {
   try {
     const { entryDate, supplierName, invoiceNumber, product: productId, totalSets } = req.body;
 
-    const product = await PRODUCT.findById(productId);
+    const product = await PRODUCT.findOne({ _id: productId, isDeleted: false });
     if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: "Product not found or has been deleted" });
     }
 
     // Determine Sequence Range per PRODUCT
     // Find the highest sequence number used for THIS specific product
-    const lastItem = await INVENTORYITEM.findOne({ product: productId })
+    const lastItem = await INVENTORYITEM.findOne({ product: productId, isDeleted: false })
       .sort({ sequenceNumber: -1 });
 
     const startSequence = lastItem ? lastItem.sequenceNumber + 1 : 100001;
@@ -79,8 +79,9 @@ exports.fetchAllStockEntries = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const totalRecords = await STOCKENTRY.countDocuments();
-    const data = await STOCKENTRY.find()
+    const query = { isDeleted: false };
+    const totalRecords = await STOCKENTRY.countDocuments(query);
+    const data = await STOCKENTRY.find(query)
       .populate("product")
       .skip(skip)
       .limit(limit)
@@ -106,7 +107,7 @@ exports.getProductInventory = async (req, res) => {
     const productId = req.params.productId;
     const status = req.query.status; // 'In Stock' or 'Sold'
 
-    const query = { product: productId };
+    const query = { product: productId, isDeleted: false };
     if (status) {
       query.status = status;
     }
@@ -117,6 +118,21 @@ exports.getProductInventory = async (req, res) => {
         success: true,
         data: inventory
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+exports.deleteStockEntry = async (req, res) => {
+  try {
+    const entry = await STOCKENTRY.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
+    if (!entry) {
+      return res.status(404).json({ success: false, message: "Stock entry not found" });
+    }
+
+    // Cascade to inventory items
+    await INVENTORYITEM.updateMany({ stockEntry: req.params.id }, { isDeleted: true });
+
+    res.status(200).json({ success: true, message: "Stock entry and related barcodes removed" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -40,7 +40,11 @@ const stockEntrySchema = new Schema(
     addedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
-    }
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

@@ -18,6 +18,7 @@ exports.fetchAllReturns = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
+      isDeleted: false,
       $or: [
         { returnId: { $regex: search, $options: "i" } },
         { scanBarcode: { $regex: search, $options: "i" } },
@@ -50,7 +51,7 @@ exports.fetchAllReturns = async (req, res) => {
 
 exports.fetchReturnById = async (req, res) => {
   try {
-    const returnData = await RETURN.findById(req.params.id).populate("product customer");
+    const returnData = await RETURN.findOne({ _id: req.params.id, isDeleted: false }).populate("product customer");
     if (!returnData) {
       return res.status(404).json({ success: false, message: "Return not found" });
     }
@@ -79,7 +80,7 @@ exports.updateReturn = async (req, res) => {
 
 exports.deleteReturn = async (req, res) => {
   try {
-    const returnData = await RETURN.findByIdAndDelete(req.params.id);
+    const returnData = await RETURN.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
     if (!returnData) {
       return res.status(404).json({ success: false, message: "Return not found" });
     }

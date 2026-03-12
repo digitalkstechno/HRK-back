@@ -18,6 +18,7 @@ exports.fetchAllStocks = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
+      isDeleted: false,
       $or: [
         { supplier: { $regex: search, $options: "i" } },
         { invoiceNumber: { $regex: search, $options: "i" } },
@@ -49,7 +50,7 @@ exports.fetchAllStocks = async (req, res) => {
 
 exports.fetchStockById = async (req, res) => {
   try {
-    const stock = await STOCK.findById(req.params.id);
+    const stock = await STOCK.findOne({ _id: req.params.id, isDeleted: false });
     if (!stock) {
       return res.status(404).json({ success: false, message: "Stock not found" });
     }
@@ -78,7 +79,7 @@ exports.updateStock = async (req, res) => {
 
 exports.deleteStock = async (req, res) => {
   try {
-    const stock = await STOCK.findByIdAndDelete(req.params.id);
+    const stock = await STOCK.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
     if (!stock) {
       return res.status(404).json({ success: false, message: "Stock not found" });
     }

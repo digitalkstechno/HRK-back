@@ -18,6 +18,7 @@ exports.fetchAllCategoryMasters = async (req, res) => {
     const search = req.query.search || "";
 
     const query = {
+      isDeleted: false,
       name: { $regex: search, $options: "i" },
     };
 
@@ -45,7 +46,7 @@ exports.fetchAllCategoryMasters = async (req, res) => {
 
 exports.fetchCategoryMasterById = async (req, res) => {
   try {
-    const categoryMaster = await CATEGORYMASTER.findById(req.params.id);
+    const categoryMaster = await CATEGORYMASTER.findOne({ _id: req.params.id, isDeleted: false });
     if (!categoryMaster) {
       return res.status(404).json({ success: false, message: "CategoryMaster not found" });
     }
@@ -74,7 +75,7 @@ exports.updateCategoryMaster = async (req, res) => {
 
 exports.deleteCategoryMaster = async (req, res) => {
   try {
-    const categoryMaster = await CATEGORYMASTER.findByIdAndDelete(req.params.id);
+    const categoryMaster = await CATEGORYMASTER.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
     if (!categoryMaster) {
       return res.status(404).json({ success: false, message: "CategoryMaster not found" });
     }
@@ -86,7 +87,7 @@ exports.deleteCategoryMaster = async (req, res) => {
 
 exports.getCategoryDropdown = async (req, res) => {
   try {
-    const data = await CATEGORYMASTER.find({}, "name");
+    const data = await CATEGORYMASTER.find({ isDeleted: false }, "name");
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

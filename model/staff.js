@@ -22,6 +22,10 @@ let StaffSchema = new Schema(
       required: true,
       default: "active",
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );

@@ -37,6 +37,10 @@ let ProductSchema = new Schema(
         ref: "SizeMaster",
       },
     ],
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
