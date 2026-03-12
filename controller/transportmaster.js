@@ -83,3 +83,12 @@ exports.deleteTransportMaster = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.getTransportDropdown = async (req, res) => {
+  try {
+    const data = await TRANSPORTMASTER.find({ isDeleted: { $ne: true } }, "name");
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

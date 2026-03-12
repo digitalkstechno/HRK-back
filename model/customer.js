@@ -8,13 +8,22 @@ let CustomerSchema = new Schema(
       type: String,
       required: true,
     },
-    phone: {
+    number: {
       type: String,
       required: true,
     },
-    email: {
+    gstNumber: {
       type: String,
-      required: true,
+    },
+    station: {
+      type: String,
+    },
+    state: {
+      type: String,
+    },
+    transport: {
+      type: Schema.Types.ObjectId,
+      ref: "TransportMaster",
     },
     isDeleted: {
       type: Boolean,

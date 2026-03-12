@@ -2,8 +2,8 @@ let CUSTOMER = require("../model/customer");
 
 exports.createCustomer = async (req, res) => {
   try {
-    const { name, phone, email } = req.body;
-    const customer = await CUSTOMER.create({ name, phone, email });
+    const { name, number, gstNumber, station, state, transport } = req.body;
+    const customer = await CUSTOMER.create({ name, number, gstNumber, station, state, transport });
     res.status(201).json({ success: true, data: customer });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -21,13 +21,16 @@ exports.fetchAllCustomers = async (req, res) => {
       isDeleted: { $ne: true },
       $or: [
         { name: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
+        { number: { $regex: search, $options: "i" } },
+        { gstNumber: { $regex: search, $options: "i" } },
+        { station: { $regex: search, $options: "i" } },
+        { state: { $regex: search, $options: "i" } },
       ],
     };
 
     const totalRecords = await CUSTOMER.countDocuments(query);
     const data = await CUSTOMER.find(query)
+      .populate("transport")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
@@ -50,7 +53,7 @@ exports.fetchAllCustomers = async (req, res) => {
 
 exports.fetchCustomerById = async (req, res) => {
   try {
-    const customer = await CUSTOMER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+    const customer = await CUSTOMER.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).populate("transport");
     if (!customer) {
       return res.status(404).json({ success: false, message: "Customer not found" });
     }
@@ -62,12 +65,12 @@ exports.fetchCustomerById = async (req, res) => {
 
 exports.updateCustomer = async (req, res) => {
   try {
-    const { name, phone, email } = req.body;
+    const { name, number, gstNumber, station, state, transport } = req.body;
     const customer = await CUSTOMER.findByIdAndUpdate(
       req.params.id,
-      { name, phone, email },
+      { name, number, gstNumber, station, state, transport },
       { new: true }
-    );
+    ).populate("transport");
     if (!customer) {
       return res.status(404).json({ success: false, message: "Customer not found" });
     }
