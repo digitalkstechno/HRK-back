@@ -12,12 +12,39 @@ exports.createBilling = async (req, res) => {
 
 exports.fetchAllBillings = async (req, res) => {
   try {
-    const billings = await BILLING.find().populate("customer");
-    res.status(200).json({ success: true, data: billings });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || "";
+
+    const query = {
+      $or: [
+        { scanBarcode: { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const totalRecords = await BILLING.countDocuments(query);
+    const data = await BILLING.find(query)
+      .populate("customer")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        totalRecords,
+        currentPage: page,
+        totalPages: Math.ceil(totalRecords / limit),
+        limit,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 exports.fetchBillingById = async (req, res) => {
   try {

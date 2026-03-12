@@ -12,12 +12,41 @@ exports.createReturn = async (req, res) => {
 
 exports.fetchAllReturns = async (req, res) => {
   try {
-    const returns = await RETURN.find().populate("product customer");
-    res.status(200).json({ success: true, data: returns });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || "";
+
+    const query = {
+      $or: [
+        { returnId: { $regex: search, $options: "i" } },
+        { scanBarcode: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const totalRecords = await RETURN.countDocuments(query);
+    const data = await RETURN.find(query)
+      .populate("product customer")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        totalRecords,
+        currentPage: page,
+        totalPages: Math.ceil(totalRecords / limit),
+        limit,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 exports.fetchReturnById = async (req, res) => {
   try {

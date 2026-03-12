@@ -12,12 +12,40 @@ exports.createStock = async (req, res) => {
 
 exports.fetchAllStocks = async (req, res) => {
   try {
-    const stocks = await STOCK.find();
-    res.status(200).json({ success: true, data: stocks });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || "";
+
+    const query = {
+      $or: [
+        { supplier: { $regex: search, $options: "i" } },
+        { invoiceNumber: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const totalRecords = await STOCK.countDocuments(query);
+    const data = await STOCK.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        totalRecords,
+        currentPage: page,
+        totalPages: Math.ceil(totalRecords / limit),
+        limit,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 exports.fetchStockById = async (req, res) => {
   try {

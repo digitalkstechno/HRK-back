@@ -12,12 +12,40 @@ exports.createCustomer = async (req, res) => {
 
 exports.fetchAllCustomers = async (req, res) => {
   try {
-    const customers = await CUSTOMER.find();
-    res.status(200).json({ success: true, data: customers });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || "";
+
+    const query = {
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const totalRecords = await CUSTOMER.countDocuments(query);
+    const data = await CUSTOMER.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        totalRecords,
+        currentPage: page,
+        totalPages: Math.ceil(totalRecords / limit),
+        limit,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 exports.fetchCustomerById = async (req, res) => {
   try {
