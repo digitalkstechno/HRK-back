@@ -1,55 +1,15 @@
 let mongoose = require("mongoose");
-
 let Schema = mongoose.Schema;
 
 let ReturnSchema = new Schema(
   {
-    returnId: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    scanBarcode: {
-      type: String,
-      required: true,
-    },
-    invoice: {
-      type: String,
-      required: true,
-    },
-    product: {
-      type: Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
-    customer: {
-      type: Schema.Types.ObjectId,
-      ref: "Customer",
-      required: true,
-    },
-    amount: {
-      type: Number,
-      required: true,
-    },
-    date: {
-      type: Date,
-      required: true,
-    },
-    refundMode: {
-      type: String,
-      required: true,
-    },
-    status: {
-      type: String,
-      required: true,
-    },
-    isDeleted: {
-      type: Boolean,
-      default: false,
-    },
+    product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
+    size: { type: Schema.Types.ObjectId, ref: "SizeMaster", required: true },
+    qty: { type: Number, required: true, min: 1 },
+    returnDate: { type: Date, required: true },
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-let RETURN = mongoose.model("Return", ReturnSchema);
-module.exports = RETURN;
+module.exports = mongoose.model("Return", ReturnSchema);

@@ -11,7 +11,7 @@ const inventoryItemSchema = new Schema(
     stockEntry: {
       type: Schema.Types.ObjectId,
       ref: "StockEntry",
-      required: true,
+      required: false,
     },
     barcode: {
       type: String,

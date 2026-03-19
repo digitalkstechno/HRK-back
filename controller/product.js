@@ -37,14 +37,21 @@ exports.fetchAllProducts = async (req, res) => {
       .limit(limit)
       .sort({ createdAt: -1 });
 
-    // Attach current stock count per product
+    // Attach per-size count: inventoryItem In Stock + return qty
+    const RETURN = require("../model/return");
     const data = await Promise.all(products.map(async (p) => {
-      const inStockCount = await INVENTORYITEM.countDocuments({ 
-        product: p._id, 
-        status: "In Stock", 
-        isDeleted: { $ne: true } 
-      });
-      return { ...p._doc, inStockCount };
+      const sizesWithCount = await Promise.all(
+        (p.sizes || []).map(async (s) => {
+          const inStock = await INVENTORYITEM.countDocuments({ product: p._id, status: "In Stock", isDeleted: { $ne: true } });
+          const returnAgg = await RETURN.aggregate([
+            { $match: { product: p._id, size: s._id, isDeleted: { $ne: true } } },
+            { $group: { _id: null, total: { $sum: "$qty" } } },
+          ]);
+          const returnQty = returnAgg[0]?.total || 0;
+          return { ...s.toObject(), count: inStock + returnQty };
+        })
+      );
+      return { ...p._doc, sizes: sizesWithCount };
     }));
 
     res.status(200).json({
