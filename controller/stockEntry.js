@@ -93,7 +93,7 @@ exports.fetchAllStockEntries = async (req, res) => {
     const query = { isDeleted: { $ne: true } };
     const totalRecords = await STOCKENTRY.countDocuments(query);
     const data = await STOCKENTRY.find(query)
-      .populate("product")
+      .populate({ path: "product", populate: { path: "sizes" } })
       .populate("supplier")
       .skip(skip)
       .limit(limit)
@@ -134,6 +134,24 @@ exports.getProductInventory = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+exports.getStockEntryInventory = async (req, res) => {
+  try {
+    const entry = await STOCKENTRY.findById(req.params.entryId)
+      .populate({ path: "product", populate: { path: "sizes" } })
+      .populate("supplier");
+    if (!entry) return res.status(404).json({ success: false, message: "Entry not found" });
+
+    const items = await INVENTORYITEM.find({
+      stockEntry: req.params.entryId,
+      isDeleted: { $ne: true }
+    }).sort({ sequenceNumber: 1 });
+
+    res.status(200).json({ success: true, data: { entry, items } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.deleteStockEntry = async (req, res) => {
   try {
     const entry = await STOCKENTRY.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
