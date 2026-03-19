@@ -11,12 +11,10 @@ let ProductSchema = new Schema(
     sku: {
       type: String,
       required: true,
-      unique: true,
     },
     productCode: {
       type: String,
       required: true,
-      unique: true,
     },
     category: {
       type: Schema.Types.ObjectId,

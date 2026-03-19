@@ -5,18 +5,6 @@ exports.createProduct = async (req, res) => {
     const { designNo, sku, category, purchasePrice, salePrice, sizes } = req.body;
     const productCode = `${designNo}-${sku}`;
     
-    // Check if SKU already exists (not deleted)
-    const existingSKU = await PRODUCT.findOne({ sku, isDeleted: { $ne: true } });
-    if (existingSKU) {
-      return res.status(400).json({ success: false, message: "SKU already exists" });
-    }
-
-    // Check if productCode already exists (not deleted)
-    const existingCode = await PRODUCT.findOne({ productCode, isDeleted: { $ne: true } });
-    if (existingCode) {
-      return res.status(400).json({ success: false, message: "Product with this Design No and SKU combination already exists" });
-    }
-    
     const product = await PRODUCT.create({ designNo, sku, productCode, category, purchasePrice, salePrice, sizes });
     res.status(201).json({ success: true, data: product });
   } catch (error) {
@@ -41,12 +29,23 @@ exports.fetchAllProducts = async (req, res) => {
     };
 
     const totalRecords = await PRODUCT.countDocuments(query);
-    const data = await PRODUCT.find(query)
+    const INVENTORYITEM = require("../model/inventoryItem");
+    const products = await PRODUCT.find(query)
       .populate("category")
       .populate("sizes")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
+
+    // Attach current stock count per product
+    const data = await Promise.all(products.map(async (p) => {
+      const inStockCount = await INVENTORYITEM.countDocuments({ 
+        product: p._id, 
+        status: "In Stock", 
+        isDeleted: { $ne: true } 
+      });
+      return { ...p._doc, inStockCount };
+    }));
 
     res.status(200).json({
       success: true,
@@ -82,18 +81,6 @@ exports.updateProduct = async (req, res) => {
   try {
     const { designNo, sku, category, purchasePrice, salePrice, sizes } = req.body;
     const productCode = `${designNo}-${sku}`;
-    
-    // Check if SKU already exists (excluding current product, not deleted)
-    const existingSKU = await PRODUCT.findOne({ sku, _id: { $ne: req.params.id }, isDeleted: { $ne: true } });
-    if (existingSKU) {
-      return res.status(400).json({ success: false, message: "SKU already exists" });
-    }
-
-    // Check if productCode already exists (excluding current product, not deleted)
-    const existingCode = await PRODUCT.findOne({ productCode, _id: { $ne: req.params.id }, isDeleted: { $ne: true } });
-    if (existingCode) {
-      return res.status(400).json({ success: false, message: "Product with this Design No and SKU combination already exists" });
-    }
     
     const product = await PRODUCT.findByIdAndUpdate(
       req.params.id,

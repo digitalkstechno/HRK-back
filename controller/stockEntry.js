@@ -24,14 +24,25 @@ exports.createStockEntry = async (req, res) => {
       return res.status(404).json({ success: false, message: "Product not found or has been deleted" });
     }
 
-    // Determine Sequence Range per PRODUCT
-    // Find the highest sequence number used for THIS specific product
-    const lastItem = await INVENTORYITEM.findOne({ product: productId, isDeleted: { $ne: true } })
-      .sort({ sequenceNumber: -1 });
+    // Determine Sequence Range (Global across ALL products) using Counter
+    // This is robust against race conditions
+    let counterObj = await COUNTER.findOne({ name: "stock_sequence" });
+    if (!counterObj) {
+        const lastItem = await INVENTORYITEM.findOne({}).sort({ sequenceNumber: -1 });
+        const maxSeq = lastItem ? lastItem.sequenceNumber : 100000;
+        counterObj = await COUNTER.create({ name: "stock_sequence", count: maxSeq });
+    }
 
-    const startSequence = lastItem ? lastItem.sequenceNumber + 1 : 100001;
+    // Atomic increment to handle concurrent requests
+    const updatedCounter = await COUNTER.findOneAndUpdate(
+        { name: "stock_sequence" },
+        { $inc: { count: totalSets } },
+        { new: true }
+    );
+
+    const startSequence = updatedCounter.count - totalSets + 1;
     const totalItems = totalSets; 
-    const endSequence = startSequence + totalItems - 1;
+    const endSequence = updatedCounter.count;
 
     // Create Stock Entry Record
     const stockEntry = await STOCKENTRY.create({
