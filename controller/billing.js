@@ -1,6 +1,7 @@
 let BILLING = require("../model/billing");
 let INVENTORYITEM = require("../model/inventoryItem");
 let PRODUCT = require("../model/product");
+const { generatePackingSlipPDF } = require("../utils/packingSlip");
 
 exports.createBilling = async (req, res) => {
   try {
@@ -105,7 +106,7 @@ exports.fetchAllBillings = async (req, res) => {
 
     const totalRecords = await BILLING.countDocuments(query);
     const data = await BILLING.find(query)
-      .populate("customer")
+      .populate({ path: "customer", populate: { path: "transport" } })
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
@@ -128,7 +129,8 @@ exports.fetchAllBillings = async (req, res) => {
 
 exports.fetchBillingById = async (req, res) => {
   try {
-    const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).populate("customer");
+    const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
+      .populate({ path: "customer", populate: { path: "transport" } });
     if (!billing) {
       return res.status(404).json({ success: false, message: "Billing not found" });
     }
@@ -187,6 +189,20 @@ exports.updateBilling = async (req, res) => {
     );
 
     res.status(200).json({ success: true, data: updatedBilling });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.generatePackingSlip = async (req, res) => {
+  try {
+    const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
+      .populate({ path: "customer", populate: { path: "transport" } })
+      .populate({ path: "items.product", populate: { path: "sizes", model: "SizeMaster", select: "name" } });
+    if (!billing) {
+      return res.status(404).json({ success: false, message: "Billing not found" });
+    }
+    generatePackingSlipPDF(billing, res);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
