@@ -17,7 +17,7 @@ const generateShortId = () => {
 
 exports.createStockEntry = async (req, res) => {
   try {
-    const { entryDate, supplierName, invoiceNumber, product: productId, totalSets } = req.body;
+    const { entryDate, supplier, invoiceNumber, product: productId, totalSets } = req.body;
 
     const product = await PRODUCT.findOne({ _id: productId, isDeleted: { $ne: true } });
     if (!product) {
@@ -36,7 +36,7 @@ exports.createStockEntry = async (req, res) => {
     // Create Stock Entry Record
     const stockEntry = await STOCKENTRY.create({
       entryDate,
-      supplierName,
+      supplier,
       invoiceNumber,
       product: productId,
       totalSets,
@@ -83,6 +83,7 @@ exports.fetchAllStockEntries = async (req, res) => {
     const totalRecords = await STOCKENTRY.countDocuments(query);
     const data = await STOCKENTRY.find(query)
       .populate("product")
+      .populate("supplier")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });

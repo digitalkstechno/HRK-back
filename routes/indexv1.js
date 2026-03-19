@@ -14,6 +14,7 @@ router.use("/purchaseorder", require("./purchaseOrder"));
 router.use("/categorymaster", require("./categorymaster"));
 router.use("/transportmaster", require("./transportmaster"));
 router.use("/stock-entry", require("./stockEntry"));
+router.use("/supplier", require("./supplier"));
 
 
 

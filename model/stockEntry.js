@@ -8,8 +8,9 @@ const stockEntrySchema = new Schema(
       default: Date.now,
       required: true,
     },
-    supplierName: {
-      type: String,
+    supplier: {
+      type: Schema.Types.ObjectId,
+      ref: "Supplier",
       required: true,
     },
     invoiceNumber: {
