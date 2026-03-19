@@ -35,14 +35,14 @@ exports.getStockReport = async (req, res) => {
       const productSizeIds = new Set(p.sizes.map((s) => s._id.toString()));
       const inStock = invMap[pid] || 0;
       const sizeCount = p.sizes.length || 1;
+      const stockPerSize = Math.floor(inStock);
 
       const sizeCounts = {};
       allSizes.forEach((s) => {
         const sid = s._id.toString();
         if (!productSizeIds.has(sid)) {
-          sizeCounts[sid] = null; // not applicable
+          sizeCounts[sid] = null;
         } else {
-          const stockPerSize = Math.floor(inStock / sizeCount);
           const retQty = retMap[`${pid}_${sid}`] || 0;
           sizeCounts[sid] = stockPerSize + retQty;
         }

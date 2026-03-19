@@ -58,7 +58,7 @@ exports.scanBarcode = async (req, res) => {
         const item = await INVENTORYITEM.findOne({
             $or: [{ barcode: barcode }, { sequenceNumber: Number(barcode) || 0 }],
             isDeleted: { $ne: true }
-        }).populate("product");
+        }).populate({ path: "product", populate: { path: "sizes", select: "name" } });
 
         if (!item) {
             return res.status(404).json({ success: false, message: "Barcode not recognized" });
