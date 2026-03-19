@@ -4,7 +4,15 @@ let PRODUCT = require("../model/product");
 
 exports.createBilling = async (req, res) => {
   try {
-    const { customer, items, totalAmount } = req.body;
+    const { 
+      customer, 
+      items, 
+      totalAmount, 
+      subtotal, 
+      discountPercent, 
+      gstEnabled, 
+      gstPercent 
+    } = req.body;
     
     // Generate Slip Number
     const lastSlip = await BILLING.findOne({}).sort({ createdAt: -1 });
@@ -21,7 +29,11 @@ exports.createBilling = async (req, res) => {
         billNumber,
         customer, 
         items,
-        totalAmount
+        totalAmount,
+        subtotal,
+        discountPercent,
+        gstEnabled,
+        gstPercent
     });
 
     // Update Inventory Items to 'Sold'
@@ -63,8 +75,9 @@ exports.scanBarcode = async (req, res) => {
             success: true,
             data: {
                 productId: product._id,
-                productName: product.productCode,
-                barcode: item.barcode, // Always return the unique string barcode
+                productName: `${product.productCode} (${product.sizes?.map(s => s.name).join(", ")})`,
+                barcode: item.barcode, 
+                sequenceNumber: item.sequenceNumber,
                 qty: qty,
                 price: product.salePrice,
                 total: product.salePrice * qty
@@ -127,16 +140,53 @@ exports.fetchBillingById = async (req, res) => {
 
 exports.updateBilling = async (req, res) => {
   try {
-    const { customer, scanBarcode, items } = req.body;
-    const billing = await BILLING.findByIdAndUpdate(
+    const { 
+      customer, 
+      items, 
+      totalAmount,
+      subtotal,
+      discountPercent,
+      gstEnabled,
+      gstPercent
+    } = req.body;
+    
+    // 1. Find existing billing
+    const oldBilling = await BILLING.findById(req.params.id);
+    if (!oldBilling) {
+        return res.status(404).json({ success: false, message: "Billing not found" });
+    }
+
+    // 2. Revert Old Items status to 'In Stock'
+    const oldBarcodes = oldBilling.items.map(i => i.barcode);
+    await INVENTORYITEM.updateMany(
+        { barcode: { $in: oldBarcodes } },
+        { status: "In Stock", $unset: { soldDate: "", billId: "" } }
+    );
+
+    // 3. Update Billing with new data
+    const updatedBilling = await BILLING.findByIdAndUpdate(
       req.params.id,
-      { customer, scanBarcode, items },
+      { 
+        customer, 
+        items, 
+        totalAmount, 
+        subtotal,
+        discountPercent,
+        gstEnabled,
+        gstPercent,
+        isDeleted: false 
+      }, 
       { new: true }
     ).populate("customer");
-    if (!billing) {
-      return res.status(404).json({ success: false, message: "Billing not found" });
-    }
-    res.status(200).json({ success: true, data: billing });
+
+    // 4. Mark New Items as 'Sold'
+    const newBarcodes = items.map(i => i.barcode);
+    await INVENTORYITEM.updateMany(
+        { barcode: { $in: newBarcodes } },
+        { status: "Sold", soldDate: new Date(), billId: updatedBilling._id }
+    );
+
+    res.status(200).json({ success: true, data: updatedBilling });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

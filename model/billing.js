@@ -28,6 +28,9 @@ let BillingSchema = new Schema(
           type: String,
           required: true,
         },
+        sequenceNumber: {
+          type: String,
+        },
         qty: {
           type: Number,
           required: true,
@@ -46,6 +49,22 @@ let BillingSchema = new Schema(
         type: Number,
         required: true,
         default: 0
+    },
+    subtotal: {
+      type: Number,
+      default: 0
+    },
+    gstEnabled: {
+      type: Boolean,
+      default: false
+    },
+    gstPercent: {
+      type: Number,
+      default: 0
+    },
+    discountPercent: {
+      type: Number,
+      default: 0
     },
     isDeleted: {
       type: Boolean,
