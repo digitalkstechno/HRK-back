@@ -14,6 +14,7 @@ router.use("/transportmaster", require("./transportmaster"));
 router.use("/location", require("./location"));
 router.use("/stock-entry", require("./stockEntry"));
 router.use("/supplier", require("./supplier"));
+router.use("/report", require("./report"));
 
 
 
