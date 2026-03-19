@@ -6,8 +6,16 @@ exports.createBilling = async (req, res) => {
   try {
     const { customer, items, totalAmount } = req.body;
     
-    // Generate Bill Number
-    const billNumber = `BILL-${Date.now().toString().slice(-6)}`;
+    // Generate Slip Number
+    const lastSlip = await BILLING.findOne({}).sort({ createdAt: -1 });
+    let slipNumber = 1000;
+    if (lastSlip && lastSlip.billNumber && lastSlip.billNumber.startsWith("SLIP-")) {
+        const lastNum = parseInt(lastSlip.billNumber.split("-")[1]);
+        if (!isNaN(lastNum)) {
+            slipNumber = lastNum + 1;
+        }
+    }
+    const billNumber = `SLIP-${slipNumber}`;
 
     const billing = await BILLING.create({ 
         billNumber,
