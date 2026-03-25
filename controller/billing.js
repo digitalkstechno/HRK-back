@@ -14,7 +14,8 @@ exports.createBilling = async (req, res) => {
       subtotal, 
       discountPercent, 
       gstEnabled, 
-      gstPercent 
+      gstPercent,
+      fulfilledReservationIds = []
     } = req.body;
     
     // --- QUOTA VALIDATION ---
@@ -99,15 +100,15 @@ exports.createBilling = async (req, res) => {
     );
 
     try {
-        // Close fulfilled reservations (All Hold bookings for this customer and products in bill)
-        await ORDER_BOOKING.updateMany(
-            { 
-                customer: new mongoose.Types.ObjectId(customer), 
-                product: { $in: productIds.map(id => new mongoose.Types.ObjectId(id)) }, 
-                status: "Hold" 
-            },
-            { status: "Closed" }
-        );
+        if (fulfilledReservationIds.length > 0) {
+            await ORDER_BOOKING.updateMany(
+                { 
+                    _id: { $in: fulfilledReservationIds.map(id => new mongoose.Types.ObjectId(id)) },
+                    status: "Hold" 
+                },
+                { status: "Closed" }
+            );
+        }
     } catch (bookingError) {
         console.error("Non-critical Error closing order bookings:", bookingError.message);
         // We don't crash the response because the Bill is already created successfully.
@@ -140,6 +141,8 @@ exports.scanBarcode = async (req, res) => {
         // Check Reservation Quota
         const currentCustomerId = req.query.customerId;
         const alreadyScanned = parseInt(req.query.alreadyScanned) || 0;
+        const selectedReservations = req.query.selectedReservations || [];
+        const reservationIds = Array.isArray(selectedReservations) ? selectedReservations : [selectedReservations];
 
         const RETURN = require("../model/return");
         const inStockCount = await INVENTORYITEM.countDocuments({ product: product._id, status: "In Stock", isDeleted: { $ne: true } });
@@ -150,7 +153,7 @@ exports.scanBarcode = async (req, res) => {
         const returnQty = returnAgg[0]?.total || 0;
         const totalPhysicalOnPage = inStockCount + returnQty;
         
-        // Find my reservations
+        // Find my reservations (Total for this product)
         const reservesByMeAgg = await ORDER_BOOKING.aggregate([
             { $match: { 
                 product: product._id, 
@@ -160,7 +163,19 @@ exports.scanBarcode = async (req, res) => {
             } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
-        const myReservation = reservesByMeAgg[0]?.total || 0;
+        const myTotalReservation = reservesByMeAgg[0]?.total || 0;
+
+        // Calculate total for specifically SELECTED reservations for this product
+        const selectedMyReservesAgg = reservationIds.length > 0 ? await ORDER_BOOKING.aggregate([
+            { $match: { 
+                _id: { $in: reservationIds.filter(id => id && id.length === 24).map(id => new mongoose.Types.ObjectId(id)) },
+                product: product._id, 
+                isDeleted: { $ne: true }, 
+                status: "Hold" 
+            } },
+            { $group: { _id: null, total: { $sum: "$totalSets" } } }
+        ]) : [];
+        const selectedReservationTotal = selectedMyReservesAgg[0]?.total || 0;
 
         // Find others' reservations
         const reservesByOthers = await ORDER_BOOKING.aggregate([
@@ -175,20 +190,23 @@ exports.scanBarcode = async (req, res) => {
         const reservedCountOthers = reservesByOthers[0]?.total || 0;
 
         let availableQuota;
-        if (myReservation > 0) {
-            // If customer has reserved this product, they get EXACTLY that amount
-            availableQuota = myReservation;
+        let isReserved = selectedReservationTotal > 0;
+        
+        if (isReserved) {
+            // SCENARIO 1: User is filling SPECIFIC selected reservation rows
+            availableQuota = selectedReservationTotal;
         } else {
-            // Otherwise, they get what's left after others' reservations
-            availableQuota = totalPhysicalOnPage - reservedCountOthers;
+            // SCENARIO 2: Regular scan (must use unreserved stock)
+            // Available = Physical - Others' Reservations - My own Reservations (since I'm not explicitly filling them via selection)
+            availableQuota = totalPhysicalOnPage - reservedCountOthers - myTotalReservation;
         }
 
         if (availableQuota <= alreadyScanned) {
             return res.status(400).json({ 
                 success: false, 
-                message: myReservation > 0 
-                    ? `Quota Reached: You have already scanned ${alreadyScanned} of the ${myReservation} reserved sets for ${product.productCode}.`
-                    : `Availability Limit: Only ${availableQuota} sets of ${product.productCode} are currently available. Other stock is reserved.` 
+                message: isReserved 
+                    ? `Reservation Limit: You already scanned ${alreadyScanned} of the ${myTotalReservation} reserved sets for ${product.productCode}.`
+                    : `Availability Limit: Only ${Math.max(0, availableQuota)} unreserved sets of ${product.productCode} are currently available. Existing stock is reserved (some by you).` 
             });
         }
 
@@ -272,7 +290,8 @@ exports.updateBilling = async (req, res) => {
       subtotal,
       discountPercent,
       gstEnabled,
-      gstPercent
+      gstPercent,
+      fulfilledReservationIds = []
     } = req.body;
     
     const oldBilling = await BILLING.findById(req.params.id);
@@ -358,15 +377,15 @@ exports.updateBilling = async (req, res) => {
     );
 
     try {
-        // Close fulfilled reservations
-        await ORDER_BOOKING.updateMany(
-            { 
-                customer: new mongoose.Types.ObjectId(customer), 
-                product: { $in: productIds.map(id => new mongoose.Types.ObjectId(id)) }, 
-                status: "Hold" 
-            },
-            { status: "Closed" }
-        );
+        if (fulfilledReservationIds.length > 0) {
+            await ORDER_BOOKING.updateMany(
+                { 
+                    _id: { $in: fulfilledReservationIds.map(id => new mongoose.Types.ObjectId(id)) },
+                    status: "Hold" 
+                },
+                { status: "Closed" }
+            );
+        }
     } catch (bookingError) {
         console.error("Non-critical Error closing order bookings during update:", bookingError.message);
     }

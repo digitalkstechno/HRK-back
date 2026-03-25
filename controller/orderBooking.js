@@ -5,36 +5,51 @@ const PRODUCT = require("../model/product");
 
 exports.createOrderBooking = async (req, res) => {
   try {
-    const { customer, product: productId, totalSets } = req.body;
-
-    const product = await PRODUCT.findById(productId);
-    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
-
-    // Calculate available sets for reservations
-    const inStockItems = await INVENTORY_ITEM.countDocuments({ product: productId, status: "In Stock", isDeleted: { $ne: true } });
-    const currentlyReservedSets = await ORDER_BOOKING.aggregate([
-        { $match: { product: new mongoose.Types.ObjectId(productId), isDeleted: { $ne: true }, status: "Hold" } },
-        { $group: { _id: null, total: { $sum: "$totalSets" } } }
-    ]);
-    const totalReserved = currentlyReservedSets[0]?.total || 0;
+    const { customer, product: productId, totalSets, items } = req.body;
     
-    // We can reserve up to (InStock - totalReserved) more sets
-    const availableToReserve = inStockItems - totalReserved;
-    if (availableToReserve < totalSets) {
-        return res.status(400).json({ 
-            success: false, 
-            message: `Insufficient Stock: Only ${availableToReserve} additional sets of ${product.productCode} are available for reservation.` 
-        });
+    // Support for both single item and array of items
+    const bookingsToCreate = items || (productId ? [{ product: productId, totalSets: totalSets }] : []);
+    
+    if (bookingsToCreate.length === 0) {
+        return res.status(400).json({ success: false, message: "No products provided for reservation." });
     }
 
-    const booking = await ORDER_BOOKING.create({
-      customer,
-      product: productId,
-      totalSets,
-      totalItems: totalSets
-    });
+    const createdBookings = [];
 
-    res.status(201).json({ success: true, data: booking });
+    for (const item of bookingsToCreate) {
+        const productId = item.product;
+        const totalSets = Number(item.totalSets);
+
+        const product = await PRODUCT.findById(productId);
+        if (!product) continue;
+
+        // Calculate available sets for reservations
+        const inStockItems = await INVENTORY_ITEM.countDocuments({ product: productId, status: "In Stock", isDeleted: { $ne: true } });
+        const currentlyReservedSets = await ORDER_BOOKING.aggregate([
+            { $match: { product: new mongoose.Types.ObjectId(productId), isDeleted: { $ne: true }, status: "Hold" } },
+            { $group: { _id: null, total: { $sum: "$totalSets" } } }
+        ]);
+        const totalReserved = currentlyReservedSets[0]?.total || 0;
+        
+        // We can reserve up to (InStock - totalReserved) more sets
+        const availableToReserve = inStockItems - totalReserved;
+        if (availableToReserve < totalSets) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Insufficient Stock: Only ${availableToReserve} additional sets of ${product.productCode} are available for reservation.` 
+            });
+        }
+
+        const booking = await ORDER_BOOKING.create({
+            customer,
+            product: productId,
+            totalSets,
+            totalItems: totalSets
+        });
+        createdBookings.push(booking);
+    }
+
+    res.status(201).json({ success: true, data: createdBookings });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
