@@ -222,7 +222,8 @@ exports.scanBarcode = async (req, res) => {
                 qty: qty,
                 price: product.salePrice,
                 total: product.salePrice * qty,
-                availableQuota: availableQuota
+                availableQuota: availableQuota,
+                sizes: product.sizes
             }
         });
 
@@ -271,7 +272,8 @@ exports.fetchAllBillings = async (req, res) => {
 exports.fetchBillingById = async (req, res) => {
   try {
     const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
-      .populate({ path: "customer", populate: { path: "transport" } });
+      .populate({ path: "customer", populate: { path: "transport" } })
+      .populate({ path: "items.product", populate: { path: "sizes", select: "name" } });
     if (!billing) {
       return res.status(404).json({ success: false, message: "Billing not found" });
     }

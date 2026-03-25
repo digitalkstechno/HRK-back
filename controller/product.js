@@ -45,8 +45,9 @@ exports.fetchAllProducts = async (req, res) => {
     const RETURN = require("../model/return");
     const ORDER_BOOKING = require("../model/orderBooking");
 
+    const BILLING = require("../model/billing");
     // Gather all counts in bulk
-    const [inStockCounts, reservedCounts, returnCounts, sizeReturnCounts] = await Promise.all([
+    const [inStockCounts, reservedCounts, returnCounts, sizeReturnCounts, lostOrDefectCounts] = await Promise.all([
       INVENTORYITEM.aggregate([
         { $match: { product: { $in: productIds }, status: "In Stock", isDeleted: { $ne: true } } },
         { $group: { _id: "$product", count: { $sum: 1 } } }
@@ -62,6 +63,13 @@ exports.fetchAllProducts = async (req, res) => {
       RETURN.aggregate([
         { $match: { product: { $in: productIds }, isDeleted: { $ne: true } } },
         { $group: { _id: { product: "$product", size: "$size" }, total: { $sum: "$qty" } } }
+      ]),
+      BILLING.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
+        { $unwind: "$items" },
+        { $match: { "items.product": { $in: productIds } } },
+        { $unwind: "$items.lostOrDefect" },
+        { $group: { _id: { product: "$items.product", size: "$items.lostOrDefect.size" }, total: { $sum: "$items.lostOrDefect.qty" } } }
       ])
     ]);
 
@@ -69,6 +77,7 @@ exports.fetchAllProducts = async (req, res) => {
     const reservedMap = Object.fromEntries(reservedCounts.map(c => [c._id.toString(), c.total]));
     const returnMap = Object.fromEntries(returnCounts.map(c => [c._id.toString(), c.total]));
     const sizeReturnMap = Object.fromEntries(sizeReturnCounts.map(c => [`${c._id.product}_${c._id.size}`, c.total]));
+    const lostOrDefectMap = Object.fromEntries(lostOrDefectCounts.map(c => [`${c._id.product}_${c._id.size}`, c.total]));
 
     const data = products.map((p) => {
       const pId = p._id.toString();
@@ -78,18 +87,21 @@ exports.fetchAllProducts = async (req, res) => {
 
       const sizesWithCount = (p.sizes || []).map((s) => {
         const sizeReturnQty = sizeReturnMap[`${pId}_${s._id.toString()}`] || 0;
-        return { ...s, count: inStock + sizeReturnQty };
+        const lostQty = lostOrDefectMap[`${pId}_${s._id.toString()}`] || 0;
+        return { ...s, count: inStock + sizeReturnQty, lostQty };
       });
 
       const allSizeCounts = sizesWithCount.map(s => s.count);
       const totalPhysicalStock = allSizeCounts.length > 0 ? Math.min(...allSizeCounts) : (inStock + returnQty);
+      const totalLost = sizesWithCount.reduce((sum, s) => sum + s.lostQty, 0);
 
       return { 
         ...p, 
         sizes: sizesWithCount, 
         totalInStock: Math.max(0, totalPhysicalStock - reservedCount),
         totalReserved: reservedCount,
-        totalCount: totalPhysicalStock
+        totalCount: totalPhysicalStock,
+        totalLost
       };
     });
 

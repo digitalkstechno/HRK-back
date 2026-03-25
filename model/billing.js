@@ -43,6 +43,19 @@ let BillingSchema = new Schema(
           type: Number,
           required: true,
         },
+        lostOrDefect: [
+          {
+            size: {
+              type: Schema.Types.ObjectId,
+              ref: "SizeMaster",
+            },
+            name: String,
+            qty: {
+              type: Number,
+              default: 0
+            }
+          }
+        ]
       },
     ],
     totalAmount: {
