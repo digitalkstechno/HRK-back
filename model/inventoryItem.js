@@ -24,11 +24,15 @@ const inventoryItemSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["In Stock", "Sold"],
+      enum: ["In Stock", "Sold", "Reserved"],
       default: "In Stock",
     },
     soldDate: {
       type: Date,
+    },
+    reservedFor: {
+      type: Schema.Types.ObjectId,
+      ref: "Customer",
     },
     billId: {
       type: Schema.Types.ObjectId,
@@ -42,8 +46,7 @@ const inventoryItemSchema = new Schema(
   { timestamps: true }
 );
 
-// Index for faster lookups when searching by barcode or status
-inventoryItemSchema.index({ barcode: 1 });
+// Index for faster lookups when searching by status
 inventoryItemSchema.index({ product: 1, status: 1 });
 
 module.exports = mongoose.model("InventoryItem", inventoryItemSchema);
