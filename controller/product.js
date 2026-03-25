@@ -147,3 +147,27 @@ exports.deleteProduct = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.fetchProductDropdown = async (req, res) => {
+  try {
+    const search = req.query.search || "";
+    const query = {
+      isDeleted: { $ne: true },
+      $or: [
+        { designNo: { $regex: search, $options: "i" } },
+        { sku: { $regex: search, $options: "i" } },
+        { productCode: { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const data = await PRODUCT.find(query)
+      .select("productCode designNo sku category sizes")
+      .populate("category")
+      .populate("sizes")
+      .sort({ productCode: 1 });
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

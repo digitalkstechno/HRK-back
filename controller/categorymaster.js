@@ -87,7 +87,12 @@ exports.deleteCategoryMaster = async (req, res) => {
 
 exports.getCategoryDropdown = async (req, res) => {
   try {
-    const data = await CATEGORYMASTER.find({ isDeleted: { $ne: true } }, "name");
+    const search = req.query.search || "";
+    const query = {
+      isDeleted: { $ne: true },
+      name: { $regex: search, $options: "i" },
+    };
+    const data = await CATEGORYMASTER.find(query, "name").sort({ name: 1 });
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

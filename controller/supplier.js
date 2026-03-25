@@ -50,13 +50,21 @@ exports.fetchAllSuppliers = async (req, res) => {
 };
 
 exports.fetchSupplierDropdown = async (req, res) => {
-    try {
-      const data = await SUPPLIER.find({ isDeleted: { $ne: true } }).select("name");
-      res.status(200).json({ success: true, data });
-    } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  };
+  try {
+    const search = req.query.search || "";
+    const query = {
+      isDeleted: { $ne: true },
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { number: { $regex: search, $options: "i" } },
+      ],
+    };
+    const data = await SUPPLIER.find(query).select("name number").sort({ name: 1 });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 exports.fetchSupplierById = async (req, res) => {
   try {

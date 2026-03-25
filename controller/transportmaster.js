@@ -86,7 +86,12 @@ exports.deleteTransportMaster = async (req, res) => {
 
 exports.getTransportDropdown = async (req, res) => {
   try {
-    const data = await TRANSPORTMASTER.find({ isDeleted: { $ne: true } }, "name");
+    const search = req.query.search || "";
+    const query = {
+      isDeleted: { $ne: true },
+      name: { $regex: search, $options: "i" },
+    };
+    const data = await TRANSPORTMASTER.find(query, "name").sort({ name: 1 });
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

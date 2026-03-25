@@ -6,11 +6,13 @@ let {
   fetchCustomerById,
   updateCustomer,
   deleteCustomer,
+  fetchCustomerDropdown,
 } = require("../controller/customer");
 const authMiddleware = require("../middleware/auth");
 
 router.post("/create", authMiddleware, createCustomer);
 router.get("/", authMiddleware, fetchAllCustomers);
+router.get("/dropdown", authMiddleware, fetchCustomerDropdown);
 router.get("/:id", authMiddleware, fetchCustomerById);
 router.put("/:id", authMiddleware, updateCustomer);
 router.delete("/:id", authMiddleware, deleteCustomer);

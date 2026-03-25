@@ -91,3 +91,24 @@ exports.deleteCustomer = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.fetchCustomerDropdown = async (req, res) => {
+  try {
+    const search = req.query.search || "";
+    const query = {
+      isDeleted: { $ne: true },
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { number: { $regex: search, $options: "i" } },
+      ],
+    };
+
+    const data = await CUSTOMER.find(query)
+      .select("name number")
+      .sort({ name: 1 });
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
