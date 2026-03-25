@@ -12,7 +12,8 @@ const COLS = [
   { h: "Sr.",       w: 32,  align: "center" },
   { h: "Design No", w: 110, align: "center" },
   { h: "Color/SKU", w: 110, align: "center" },
-  { h: "Size",      w: 243, align: "center" },
+  // { h: "Size",      w: 243, align: "center" },
+  { h: "Prize",     w: 243, align: "center" },
   { h: "Qty",       w: 60,  align: "center" },
 ];
 const TABLE_W = COLS.reduce((s, c) => s + c.w, 0); // 555
@@ -239,7 +240,8 @@ function generatePackingSlipPDF(billing, res) {
     String(idx + 1),
     row.designNo,
     row.sku,
-    row.sizes,
+    // row.sizes,
+    String(row.price),
     String(row.qty),
   ]);
 
