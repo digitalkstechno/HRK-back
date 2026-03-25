@@ -25,11 +25,14 @@ exports.fetchAllSizeMasters = async (req, res) => {
       ],
     };
 
-    const totalRecords = await SIZEMASTER.countDocuments(query);
-    const data = await SIZEMASTER.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    const [totalRecords, data] = await Promise.all([
+      SIZEMASTER.countDocuments(query),
+      SIZEMASTER.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
 
     res.status(200).json({
       success: true,
@@ -46,10 +49,9 @@ exports.fetchAllSizeMasters = async (req, res) => {
   }
 };
 
-
 exports.fetchSizeMasterById = async (req, res) => {
   try {
-    const sizeMaster = await SIZEMASTER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+    const sizeMaster = await SIZEMASTER.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).lean();
     if (!sizeMaster) {
       return res.status(404).json({ success: false, message: "SizeMaster not found" });
     }
@@ -66,7 +68,7 @@ exports.updateSizeMaster = async (req, res) => {
       req.params.id,
       { name, description },
       { new: true }
-    );
+    ).lean();
     if (!sizeMaster) {
       return res.status(404).json({ success: false, message: "SizeMaster not found" });
     }
@@ -95,7 +97,7 @@ exports.getSizeDropdown = async (req, res) => {
       isDeleted: { $ne: true },
       name: { $regex: search, $options: "i" },
     };
-    const data = await SIZEMASTER.find(query, "name").sort({ name: 1 });
+    const data = await SIZEMASTER.find(query, "name").sort({ name: 1 }).lean();
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

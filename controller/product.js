@@ -28,56 +28,70 @@ exports.fetchAllProducts = async (req, res) => {
       ],
     };
 
-    const totalRecords = await PRODUCT.countDocuments(query);
-    const products = await PRODUCT.find(query)
-      .populate("category")
-      .populate("sizes")
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    const [totalRecords, products] = await Promise.all([
+      PRODUCT.countDocuments(query),
+      PRODUCT.find(query)
+        .populate("category")
+        .populate("sizes")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    const productIds = products.map((p) => p._id);
 
     const INVENTORYITEM = require("../model/inventoryItem");
     const RETURN = require("../model/return");
     const ORDER_BOOKING = require("../model/orderBooking");
 
-    const data = await Promise.all(products.map(async (p) => {
-      const inStock = await INVENTORYITEM.countDocuments({ product: p._id, status: "In Stock", isDeleted: { $ne: true } });
-      
-      const reservedAgg = await ORDER_BOOKING.aggregate([
-        { $match: { product: p._id, isDeleted: { $ne: true }, status: "Hold" } },
-        { $group: { _id: null, total: { $sum: "$totalSets" } } },
-      ]);
-      const reservedCount = reservedAgg[0]?.total || 0;
-      
-      const returnAgg = await RETURN.aggregate([
-        { $match: { product: p._id, isDeleted: { $ne: true } } },
-        { $group: { _id: null, total: { $sum: "$qty" } } },
-      ]);
-      const returnQty = returnAgg[0]?.total || 0;
-      // Sizes with count (based on In Stock barcodes + size-specific returns)
-      const sizesWithCount = await Promise.all(
-        (p.sizes || []).map(async (s) => {
-          const sizeReturnAgg = await RETURN.aggregate([
-            { $match: { product: p._id, size: s._id, isDeleted: { $ne: true } } },
-            { $group: { _id: null, total: { $sum: "$qty" } } },
-          ]);
-          const sizeReturnQty = sizeReturnAgg[0]?.total || 0;
-          return { ...s.toObject(), count: inStock + sizeReturnQty };
-        })
-      );
+    // Gather all counts in bulk
+    const [inStockCounts, reservedCounts, returnCounts, sizeReturnCounts] = await Promise.all([
+      INVENTORYITEM.aggregate([
+        { $match: { product: { $in: productIds }, status: "In Stock", isDeleted: { $ne: true } } },
+        { $group: { _id: "$product", count: { $sum: 1 } } }
+      ]),
+      ORDER_BOOKING.aggregate([
+        { $match: { product: { $in: productIds }, status: "Hold", isDeleted: { $ne: true } } },
+        { $group: { _id: "$product", total: { $sum: "$totalSets" } } }
+      ]),
+      RETURN.aggregate([
+        { $match: { product: { $in: productIds }, isDeleted: { $ne: true } } },
+        { $group: { _id: "$product", total: { $sum: "$qty" } } }
+      ]),
+      RETURN.aggregate([
+        { $match: { product: { $in: productIds }, isDeleted: { $ne: true } } },
+        { $group: { _id: { product: "$product", size: "$size" }, total: { $sum: "$qty" } } }
+      ])
+    ]);
 
-      // Use the minimum count across all sizes as the "Total Complete Sets"
+    const inStockMap = Object.fromEntries(inStockCounts.map(c => [c._id.toString(), c.count]));
+    const reservedMap = Object.fromEntries(reservedCounts.map(c => [c._id.toString(), c.total]));
+    const returnMap = Object.fromEntries(returnCounts.map(c => [c._id.toString(), c.total]));
+    const sizeReturnMap = Object.fromEntries(sizeReturnCounts.map(c => [`${c._id.product}_${c._id.size}`, c.total]));
+
+    const data = products.map((p) => {
+      const pId = p._id.toString();
+      const inStock = inStockMap[pId] || 0;
+      const reservedCount = reservedMap[pId] || 0;
+      const returnQty = returnMap[pId] || 0;
+
+      const sizesWithCount = (p.sizes || []).map((s) => {
+        const sizeReturnQty = sizeReturnMap[`${pId}_${s._id.toString()}`] || 0;
+        return { ...s, count: inStock + sizeReturnQty };
+      });
+
       const allSizeCounts = sizesWithCount.map(s => s.count);
       const totalPhysicalStock = allSizeCounts.length > 0 ? Math.min(...allSizeCounts) : (inStock + returnQty);
 
       return { 
-        ...p._doc, 
+        ...p, 
         sizes: sizesWithCount, 
         totalInStock: Math.max(0, totalPhysicalStock - reservedCount),
         totalReserved: reservedCount,
         totalCount: totalPhysicalStock
       };
-    }));
+    });
 
     res.status(200).json({
       success: true,
@@ -164,7 +178,8 @@ exports.fetchProductDropdown = async (req, res) => {
       .select("productCode designNo sku category sizes")
       .populate("category")
       .populate("sizes")
-      .sort({ productCode: 1 });
+      .sort({ productCode: 1 })
+      .lean();
 
     res.status(200).json({ success: true, data });
   } catch (error) {

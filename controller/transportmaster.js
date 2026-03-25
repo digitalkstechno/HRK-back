@@ -22,11 +22,14 @@ exports.fetchAllTransportMasters = async (req, res) => {
       name: { $regex: search, $options: "i" },
     };
 
-    const totalRecords = await TRANSPORTMASTER.countDocuments(query);
-    const data = await TRANSPORTMASTER.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    const [totalRecords, data] = await Promise.all([
+      TRANSPORTMASTER.countDocuments(query),
+      TRANSPORTMASTER.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
 
     res.status(200).json({
       success: true,
@@ -45,7 +48,7 @@ exports.fetchAllTransportMasters = async (req, res) => {
 
 exports.fetchTransportMasterById = async (req, res) => {
   try {
-    const transportMaster = await TRANSPORTMASTER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+    const transportMaster = await TRANSPORTMASTER.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).lean();
     if (!transportMaster) {
       return res.status(404).json({ success: false, message: "TransportMaster not found" });
     }
@@ -62,7 +65,7 @@ exports.updateTransportMaster = async (req, res) => {
       req.params.id,
       { name },
       { new: true }
-    );
+    ).lean();
     if (!transportMaster) {
       return res.status(404).json({ success: false, message: "TransportMaster not found" });
     }
@@ -91,7 +94,7 @@ exports.getTransportDropdown = async (req, res) => {
       isDeleted: { $ne: true },
       name: { $regex: search, $options: "i" },
     };
-    const data = await TRANSPORTMASTER.find(query, "name").sort({ name: 1 });
+    const data = await TRANSPORTMASTER.find(query, "name").sort({ name: 1 }).lean();
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

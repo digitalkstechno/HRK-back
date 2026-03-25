@@ -28,12 +28,15 @@ exports.fetchAllCustomers = async (req, res) => {
       ],
     };
 
-    const totalRecords = await CUSTOMER.countDocuments(query);
-    const data = await CUSTOMER.find(query)
-      .populate("transport")
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    const [totalRecords, data] = await Promise.all([
+      CUSTOMER.countDocuments(query),
+      CUSTOMER.find(query)
+        .populate("transport")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
 
     res.status(200).json({
       success: true,
@@ -105,7 +108,8 @@ exports.fetchCustomerDropdown = async (req, res) => {
 
     const data = await CUSTOMER.find(query)
       .select("name number")
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .lean();
 
     res.status(200).json({ success: true, data });
   } catch (error) {

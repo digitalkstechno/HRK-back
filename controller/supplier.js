@@ -28,11 +28,14 @@ exports.fetchAllSuppliers = async (req, res) => {
       ],
     };
 
-    const totalRecords = await SUPPLIER.countDocuments(query);
-    const data = await SUPPLIER.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    const [totalRecords, data] = await Promise.all([
+      SUPPLIER.countDocuments(query),
+      SUPPLIER.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
 
     res.status(200).json({
       success: true,
@@ -59,7 +62,7 @@ exports.fetchSupplierDropdown = async (req, res) => {
         { number: { $regex: search, $options: "i" } },
       ],
     };
-    const data = await SUPPLIER.find(query).select("name number").sort({ name: 1 });
+    const data = await SUPPLIER.find(query).select("name number").sort({ name: 1 }).lean();
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -68,7 +71,7 @@ exports.fetchSupplierDropdown = async (req, res) => {
 
 exports.fetchSupplierById = async (req, res) => {
   try {
-    const supplier = await SUPPLIER.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+    const supplier = await SUPPLIER.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).lean();
     if (!supplier) {
       return res.status(404).json({ success: false, message: "Supplier not found" });
     }
@@ -85,7 +88,7 @@ exports.updateSupplier = async (req, res) => {
       req.params.id,
       { name, number, gstNumber, station, state },
       { new: true }
-    );
+    ).lean();
     if (!supplier) {
       return res.status(404).json({ success: false, message: "Supplier not found" });
     }
