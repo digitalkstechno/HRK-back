@@ -11,7 +11,7 @@ exports.createOrderBooking = async (req, res) => {
     const bookingsToCreate = items || (productId ? [{ product: productId, totalSets: totalSets }] : []);
     
     if (bookingsToCreate.length === 0) {
-        return res.status(400).json({ success: false, message: "No products provided for reservation." });
+        return res.status(400).json({ success: false, message: "No products provided for order form." });
     }
 
     const createdBookings = [];
@@ -36,7 +36,7 @@ exports.createOrderBooking = async (req, res) => {
         if (availableToReserve < totalSets) {
             return res.status(400).json({ 
                 success: false, 
-                message: `Insufficient Stock: Only ${availableToReserve} additional sets of ${product.productCode} are available for reservation.` 
+                message: `Insufficient Stock: Only ${availableToReserve} additional sets of ${product.productCode} are available for order.` 
             });
         }
 
@@ -113,7 +113,7 @@ exports.updateOrderBooking = async (req, res) => {
     if (availableToReserve < totalSets) {
         return res.status(400).json({ 
             success: false, 
-            message: `Insufficient Stock: Only ${availableToReserve} sets of ${product.productCode} are available for reservation (considering other bookings).` 
+            message: `Insufficient Stock: Only ${availableToReserve} sets of ${product.productCode} are available for order (considering other bookings).` 
         });
     }
 

@@ -205,7 +205,7 @@ exports.scanBarcode = async (req, res) => {
             return res.status(400).json({ 
                 success: false, 
                 message: isReserved 
-                    ? `Reservation Limit: You already scanned ${alreadyScanned} of the ${myTotalReservation} reserved sets for ${product.productCode}.`
+                    ? `Order Limit: You already scanned ${alreadyScanned} of the ${myTotalReservation} reserved sets for ${product.productCode}.`
                     : `Availability Limit: Only ${Math.max(0, availableQuota)} unreserved sets of ${product.productCode} are currently available. Existing stock is reserved (some by you).` 
             });
         }
