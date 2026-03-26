@@ -10,7 +10,6 @@ let CustomerSchema = new Schema(
     },
     number: {
       type: String,
-      required: true,
     },
     gstNumber: {
       type: String,
