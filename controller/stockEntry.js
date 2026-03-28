@@ -166,7 +166,11 @@ exports.getProductInventory = async (req, res) => {
 
     const query = { product: productId, isDeleted: { $ne: true } };
     if (status) {
-      query.status = status;
+      if (status === "In Stock") {
+        query.status = { $in: ["In Stock", "Partial"] };
+      } else {
+        query.status = status;
+      }
     }
 
     const inventory = await INVENTORYITEM.find(query).sort({ sequenceNumber: 1 });
