@@ -11,7 +11,7 @@ let BillingSchema = new Schema(
     customer: {
       type: Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      required: false,
     },
     items: [
       {
@@ -47,6 +47,12 @@ let BillingSchema = new Schema(
           type: Number,
           required: true,
         },
+        soldSizes: [
+          {
+            type: Schema.Types.ObjectId,
+            ref: "SizeMaster"
+          }
+        ],
         lostOrDefect: [
           {
             size: {

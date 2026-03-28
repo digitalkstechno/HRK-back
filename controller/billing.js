@@ -42,30 +42,53 @@ exports.createBilling = async (req, res) => {
         }));
         const totalPhysicalSets = sizeCounts.length > 0 ? Math.min(...sizeCounts) : physicalInInv;
 
-        // 2. Calculate Reservations by Others
-        const reservesByOthers = await ORDER_BOOKING.aggregate([
+        // 2. Calculate All Reservations for this product
+        const allReservQuery = { 
+            product: new mongoose.Types.ObjectId(pId), 
+            isDeleted: { $ne: true }, 
+            status: "Hold" 
+        };
+
+        const totalReservedAgg = await ORDER_BOOKING.aggregate([
+            { $match: allReservQuery },
+            { $group: { _id: null, total: { $sum: "$totalSets" } } }
+        ]);
+        const totalReservedAll = totalReservedAgg[0]?.total || 0;
+
+        // 3. Calculate specifically SELECTED reservations for CURRENT billing
+        const selectedResIds = (fulfilledReservationIds || []).filter(id => id && id.length === 24);
+        const selectedResAgg = await ORDER_BOOKING.aggregate([
             { $match: { 
-                product: new mongoose.Types.ObjectId(pId), 
-                customer: { $ne: new mongoose.Types.ObjectId(customer) }, 
-                isDeleted: { $ne: true }, 
-                status: "Hold" 
+                _id: { $in: selectedResIds.map(id => new mongoose.Types.ObjectId(id)) },
+                product: new mongoose.Types.ObjectId(pId),
+                status: "Hold"
             } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
-        const reservedCountOthers = reservesByOthers[0]?.total || 0;
-        
-        const availableForMe = totalPhysicalSets - reservedCountOthers;
+        const selectedResTotal = selectedResAgg[0]?.total || 0;
 
-        console.log(`[DEBUG] Product: ${productInfo.productCode}`);
-        console.log(`[DEBUG] Total Physical Sets (Min size): ${totalPhysicalSets}`);
-        console.log(`[DEBUG] Reserved By Others: ${reservedCountOthers}`);
-        console.log(`[DEBUG] Attempted in Bill: ${itemQtyInBill}`);
+        // 4. Formula: Strict Separation
+        let availableForMe;
+        let quotaMessage = "";
+        if (selectedResTotal > 0) {
+            // Fulfilling specific reservation -> Limit is ONLY the reserved qty
+            availableForMe = selectedResTotal;
+            quotaMessage = `Your selected reservation limit for ${productInfo.productCode} is ${selectedResTotal} sets.`;
+        } else {
+            // General scan -> Limit is unreserved stock
+            availableForMe = Math.max(0, totalPhysicalSets - totalReservedAll);
+            quotaMessage = `Unreserved Availability: Only ${availableForMe} sets of ${productInfo.productCode} are currently free for non-reserved billing.`;
+        }
+
         console.log(`[DEBUG] Final Available for Me: ${availableForMe}`);
 
         if (availableForMe < itemQtyInBill) {
+            const extraMsg = selectedResTotal > 0 
+                ? `You scanned ${itemQtyInBill} pieces but only ${selectedResTotal} are selected for fulfillment. Please uncheck reservation or reduce quantity.` 
+                : "Remaining stock is reserved for other orders.";
             return res.status(400).json({ 
                 success: false, 
-                message: `Availability Limit: Only ${availableForMe} sets of ${productInfo.productCode} are available. Remaining stock is reserved.` 
+                message: `${quotaMessage} ${extraMsg}` 
             });
         }
     }
@@ -92,12 +115,24 @@ exports.createBilling = async (req, res) => {
         gstPercent
     });
 
-    // Update Inventory Items to 'Sold'
-    const barcodes = items.map(item => item.barcode);
-    await INVENTORYITEM.updateMany(
-        { barcode: { $in: barcodes } },
-        { status: "Sold", soldDate: new Date(), billId: billing._id }
-    );
+    // Update Inventory Items status and available sizes
+    for (const item of items) {
+        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        if (invItem) {
+            // Filter out the sizes being sold in this bill
+            const soldSizeIds = (item.soldSizes || []).map(id => id.toString());
+            invItem.availableSizes = invItem.availableSizes.filter(sId => !soldSizeIds.includes(sId.toString()));
+            
+            if (invItem.availableSizes.length === 0) {
+                invItem.status = "Sold";
+                invItem.soldDate = new Date();
+                invItem.billId = billing._id;
+            } else {
+                invItem.status = "Partial";
+            }
+            await invItem.save();
+        }
+    }
 
     try {
         if (fulfilledReservationIds.length > 0) {
@@ -127,7 +162,8 @@ exports.scanBarcode = async (req, res) => {
         const item = await INVENTORYITEM.findOne({
             $or: [{ barcode: barcode }, { sequenceNumber: Number(barcode) || 0 }],
             isDeleted: { $ne: true }
-        }).populate({ path: "product", populate: { path: "sizes", select: "name" } });
+        }).populate({ path: "product", populate: { path: "sizes", select: "name" } })
+        .populate({ path: "availableSizes", select: "name" });
 
         if (!item) {
             return res.status(404).json({ success: false, message: "Barcode not recognized" });
@@ -145,7 +181,7 @@ exports.scanBarcode = async (req, res) => {
         const reservationIds = Array.isArray(selectedReservations) ? selectedReservations : [selectedReservations];
 
         const RETURN = require("../model/return");
-        const inStockCount = await INVENTORYITEM.countDocuments({ product: product._id, status: "In Stock", isDeleted: { $ne: true } });
+        const inStockCount = await INVENTORYITEM.countDocuments({ product: product._id, status: { $in: ["In Stock", "Partial"] }, isDeleted: { $ne: true } });
         const returnAgg = await RETURN.aggregate([
             { $match: { product: product._id, isDeleted: { $ne: true } } },
             { $group: { _id: null, total: { $sum: "$qty" } } },
@@ -154,10 +190,11 @@ exports.scanBarcode = async (req, res) => {
         const totalPhysicalOnPage = inStockCount + returnQty;
         
         // Find my reservations (Total for this product)
+        const isValideCustomerId = currentCustomerId && currentCustomerId.length === 24;
         const reservesByMeAgg = await ORDER_BOOKING.aggregate([
             { $match: { 
                 product: product._id, 
-                customer: currentCustomerId ? new mongoose.Types.ObjectId(currentCustomerId) : null, 
+                customer: isValideCustomerId ? new mongoose.Types.ObjectId(currentCustomerId) : null, 
                 isDeleted: { $ne: true }, 
                 status: "Hold" 
             } },
@@ -178,13 +215,17 @@ exports.scanBarcode = async (req, res) => {
         const selectedReservationTotal = selectedMyReservesAgg[0]?.total || 0;
 
         // Find others' reservations
+        const othersReservMatch = { 
+            product: product._id, 
+            isDeleted: { $ne: true }, 
+            status: "Hold" 
+        };
+        if (currentCustomerId && currentCustomerId.length === 24) {
+            othersReservMatch.customer = { $ne: new mongoose.Types.ObjectId(currentCustomerId) };
+        }
+
         const reservesByOthers = await ORDER_BOOKING.aggregate([
-            { $match: { 
-                product: product._id, 
-                customer: { $ne: currentCustomerId ? new mongoose.Types.ObjectId(currentCustomerId) : null }, 
-                isDeleted: { $ne: true }, 
-                status: "Hold" 
-            } },
+            { $match: othersReservMatch },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
         const reservedCountOthers = reservesByOthers[0]?.total || 0;
@@ -210,7 +251,7 @@ exports.scanBarcode = async (req, res) => {
             });
         }
 
-        const qty = product.sizes?.length || 1; 
+        const qty = item.availableSizes?.length || product.sizes?.length || 1; 
 
         res.status(200).json({
             success: true,
@@ -220,6 +261,7 @@ exports.scanBarcode = async (req, res) => {
                 barcode: item.barcode, 
                 sequenceNumber: item.sequenceNumber,
                 qty: qty,
+                availableSizes: item.availableSizes,
                 price: product.salePrice,
                 total: product.salePrice * qty,
                 availableQuota: availableQuota,
@@ -326,34 +368,75 @@ exports.updateBilling = async (req, res) => {
         const totalPhysicalSets = sizeCounts.length > 0 ? Math.min(...sizeCounts) : physicalInInv;
         const totalPotentiallyAvailable = totalPhysicalSets + oldQtyInBill;
 
-        // 2. Calculate Reservations by Others
-        const reservesByOthersAgg = await ORDER_BOOKING.aggregate([
+        // 2. Calculate All Reservations for this product
+        const allReservQuery = { 
+            product: new mongoose.Types.ObjectId(pId), 
+            isDeleted: { $ne: true }, 
+            status: "Hold" 
+        };
+
+        const totalReservedAgg = await ORDER_BOOKING.aggregate([
+            { $match: allReservQuery },
+            { $group: { _id: null, total: { $sum: "$totalSets" } } }
+        ]);
+        const totalReservedAll = totalReservedAgg[0]?.total || 0;
+
+        // 3. Calculate specifically SELECTED reservations
+        const selectedResIds = (fulfilledReservationIds || []).filter(id => id && id.length === 24);
+        const selectedResAgg = await ORDER_BOOKING.aggregate([
             { $match: { 
-                product: new mongoose.Types.ObjectId(pId), 
-                customer: { $ne: new mongoose.Types.ObjectId(customer) }, 
-                isDeleted: { $ne: true }, 
-                status: "Hold" 
+                _id: { $in: selectedResIds.map(id => new mongoose.Types.ObjectId(id)) },
+                product: new mongoose.Types.ObjectId(pId),
+                status: "Hold"
             } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
-        const reservedCountOthers = reservesByOthersAgg[0]?.total || 0;
-        
-        const availableForMe = totalPotentiallyAvailable - reservedCountOthers;
+        const selectedResTotal = selectedResAgg[0]?.total || 0;
+
+        // 4. Formula: Strict Separation (Including Old Qty)
+        let availableForMe;
+        let quotaMessage = "";
+        if (selectedResTotal > 0) {
+            availableForMe = selectedResTotal + oldQtyInBill;
+            quotaMessage = `Your reservation limit (+ existing) for ${productInfo.productCode} is ${availableForMe} sets.`;
+        } else {
+            availableForMe = Math.max(0, totalPhysicalSets - totalReservedAll) + oldQtyInBill;
+            quotaMessage = `Unreserved Availability (+ existing): Only ${availableForMe} sets of ${productInfo.productCode} are free.`;
+        }
 
         if (availableForMe < itemQtyInBill) {
+            const extraMsg = selectedResTotal > 0 
+            ? `You attempted to bill ${itemQtyInBill} but only ${availableForMe} are permitted under this reservation. Check scanned items.` 
+            : "Remaining stock is reserved.";
             return res.status(400).json({ 
                 success: false, 
-                message: `Availability Limit: Only ${availableForMe} sets of ${productInfo.productCode} are available. Remaining stock is reserved.` 
+                message: `${quotaMessage} ${extraMsg}` 
             });
         }
     }
 
-    // Revert Old Items status to 'In Stock'
-    const oldBarcodes = oldBilling.items.map(i => i.barcode);
-    await INVENTORYITEM.updateMany(
-        { barcode: { $in: oldBarcodes } },
-        { status: "In Stock", $unset: { soldDate: "", billId: "" } }
-    );
+    // Revert Old Items status to 'In Stock' or 'Partial'
+    for (const item of oldBilling.items) {
+        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        const product = await PRODUCT.findById(invItem.product);
+        if (invItem && product) {
+            // Add back the sold sizes from the old bill
+            const oldSoldSizes = (item.soldSizes || []).map(s => s.toString());
+            const currentAvailableSizes = invItem.availableSizes.map(s => s.toString());
+            const combinedSizes = Array.from(new Set([...currentAvailableSizes, ...oldSoldSizes]));
+            
+            invItem.availableSizes = combinedSizes;
+            
+            if (invItem.availableSizes.length >= product.sizes.length) {
+                invItem.status = "In Stock";
+            } else {
+                invItem.status = "Partial";
+            }
+            invItem.soldDate = undefined;
+            invItem.billId = undefined;
+            await invItem.save();
+        }
+    }
 
     // Update Billing
     const updatedBilling = await BILLING.findByIdAndUpdate(
@@ -371,12 +454,26 @@ exports.updateBilling = async (req, res) => {
       { new: true }
     ).populate("customer");
 
-    // Mark New Items as 'Sold'
-    const newBarcodes = items.map(i => i.barcode);
-    await INVENTORYITEM.updateMany(
-        { barcode: { $in: newBarcodes } },
-        { status: "Sold", soldDate: new Date(), billId: updatedBilling._id }
-    );
+    // Mark New Items as 'Sold' or 'Partial'
+    for (const item of items) {
+        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        if (invItem) {
+            // Filter out the sizes being sold in this bill
+            const soldSizeIds = (item.soldSizes || []).map(id => id.toString());
+            invItem.availableSizes = invItem.availableSizes.filter(sId => !soldSizeIds.includes(sId.toString()));
+            
+            if (invItem.availableSizes.length === 0) {
+                invItem.status = "Sold";
+                invItem.soldDate = new Date();
+                invItem.billId = updatedBilling._id;
+            } else {
+                invItem.status = "Partial";
+                invItem.soldDate = undefined;
+                invItem.billId = undefined; // For partial, we might not track which bill it's in clearly, but let's keep it this way
+            }
+            await invItem.save();
+        }
+    }
 
     try {
         if (fulfilledReservationIds.length > 0) {
@@ -419,11 +516,28 @@ exports.deleteBilling = async (req, res) => {
       return res.status(404).json({ success: false, message: "Billing not found" });
     }
 
-    const barcodes = billing.items.map(item => item.barcode);
-    await INVENTORYITEM.updateMany(
-        { barcode: { $in: barcodes } },
-        { status: "In Stock", $unset: { soldDate: "", billId: "" } }
-    );
+    // Revert items before deleting bill
+    for (const item of billing.items) {
+        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        const product = await PRODUCT.findById(invItem.product);
+        if (invItem && product) {
+            // Add back the sold sizes from the bill
+            const oldSoldSizes = (item.soldSizes || []).map(s => s.toString());
+            const currentAvailableSizes = invItem.availableSizes.map(s => s.toString());
+            const combinedSizes = Array.from(new Set([...currentAvailableSizes, ...oldSoldSizes]));
+            
+            invItem.availableSizes = combinedSizes;
+            
+            if (invItem.availableSizes.length >= product.sizes.length) {
+                invItem.status = "In Stock";
+            } else {
+                invItem.status = "Partial";
+            }
+            invItem.soldDate = undefined;
+            invItem.billId = undefined;
+            await invItem.save();
+        }
+    }
 
     billing.isDeleted = true;
     await billing.save();

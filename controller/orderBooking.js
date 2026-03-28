@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const ORDER_BOOKING = require("../model/orderBooking");
 const INVENTORY_ITEM = require("../model/inventoryItem");
 const PRODUCT = require("../model/product");
+const CUSTOMER = require("../model/customer");
 
 exports.createOrderBooking = async (req, res) => {
   try {
@@ -23,20 +24,34 @@ exports.createOrderBooking = async (req, res) => {
         const product = await PRODUCT.findById(productId);
         if (!product) continue;
 
-        // Calculate available sets for reservations
-        const inStockItems = await INVENTORY_ITEM.countDocuments({ product: productId, status: "In Stock", isDeleted: { $ne: true } });
+        // Calculate available sets by checking individual size pieces
+        const sizeStats = await INVENTORY_ITEM.aggregate([
+            { $match: { 
+                product: new mongoose.Types.ObjectId(productId), 
+                status: { $in: ["In Stock", "Partial"] }, 
+                isDeleted: { $ne: true } 
+            } },
+            { $unwind: "$availableSizes" },
+            { $group: { _id: "$availableSizes", count: { $sum: 1 } } }
+        ]);
+
+        const statsMap = Object.fromEntries(sizeStats.map(s => [s._id.toString(), s.count]));
+        
+        // Find minimum count across all intended product sizes
+        const availableCounts = (product.sizes || []).map(s => statsMap[s.toString()] || 0);
+        const physicalSetsAvailable = availableCounts.length > 0 ? Math.min(...availableCounts) : 0;
+
         const currentlyReservedSets = await ORDER_BOOKING.aggregate([
             { $match: { product: new mongoose.Types.ObjectId(productId), isDeleted: { $ne: true }, status: "Hold" } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
         const totalReserved = currentlyReservedSets[0]?.total || 0;
         
-        // We can reserve up to (InStock - totalReserved) more sets
-        const availableToReserve = inStockItems - totalReserved;
+        const availableToReserve = physicalSetsAvailable - totalReserved;
         if (availableToReserve < totalSets) {
             return res.status(400).json({ 
                 success: false, 
-                message: `Insufficient Stock: Only ${availableToReserve} additional sets of ${product.productCode} are available for order.` 
+                message: `Insufficient Stock: Only ${availableToReserve} complete sets of ${product.productCode} are available for order.` 
             });
         }
 
@@ -60,10 +75,37 @@ exports.fetchAllOrderBookings = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const { search, customerId, status } = req.query;
 
     const query = { isDeleted: { $ne: true } };
-    if (req.query.customerId) query.customer = req.query.customerId;
-    if (req.query.status) query.status = req.query.status;
+    if (customerId) query.customer = customerId;
+    if (status) query.status = status;
+
+    if (search) {
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        // Find matching products
+        const productIds = await PRODUCT.find({
+            $or: [
+                { designNo: { $regex: escapedSearch, $options: "i" } },
+                { sku: { $regex: escapedSearch, $options: "i" } },
+                { productCode: { $regex: escapedSearch, $options: "i" } }
+            ]
+        }).distinct("_id");
+
+        // Find matching customers
+        const customerIds = await CUSTOMER.find({
+            $or: [
+                { name: { $regex: escapedSearch, $options: "i" } },
+                { number: { $regex: escapedSearch, $options: "i" } }
+            ]
+        }).distinct("_id");
+
+        query.$or = [
+            { product: { $in: productIds } },
+            { customer: { $in: customerIds } }
+        ];
+    }
 
     const totalRecords = await ORDER_BOOKING.countDocuments(query);
     const data = await ORDER_BOOKING.find(query)
@@ -97,7 +139,17 @@ exports.updateOrderBooking = async (req, res) => {
     // Validate new reservation quantity
     const productId = booking.product;
     const product = await PRODUCT.findById(productId);
-    const inStockItems = await INVENTORY_ITEM.countDocuments({ product: productId, status: "In Stock", isDeleted: { $ne: true } });
+    
+    // Calculate available physical sets
+    const sizeStats = await INVENTORY_ITEM.aggregate([
+        { $match: { product: new mongoose.Types.ObjectId(productId), status: "In Stock", isDeleted: { $ne: true } } },
+        { $unwind: "$availableSizes" },
+        { $group: { _id: "$availableSizes", count: { $sum: 1 } } }
+    ]);
+    const statsMap = Object.fromEntries(sizeStats.map(s => [s._id.toString(), s.count]));
+    const availableCounts = (product.sizes || []).map(s => statsMap[s.toString()] || 0);
+    const physicalSetsAvailable = availableCounts.length > 0 ? Math.min(...availableCounts) : 0;
+
     const currentlyReservedExcludingSelf = await ORDER_BOOKING.aggregate([
         { $match: { 
             _id: { $ne: booking._id }, 
@@ -109,11 +161,11 @@ exports.updateOrderBooking = async (req, res) => {
     ]);
     const totalReservedOthers = currentlyReservedExcludingSelf[0]?.total || 0;
 
-    const availableToReserve = inStockItems - totalReservedOthers;
+    const availableToReserve = physicalSetsAvailable - totalReservedOthers;
     if (availableToReserve < totalSets) {
         return res.status(400).json({ 
             success: false, 
-            message: `Insufficient Stock: Only ${availableToReserve} sets of ${product.productCode} are available for order (considering other bookings).` 
+            message: `Insufficient Stock: Only ${availableToReserve} complete sets of ${product.productCode} are available for order.` 
         });
     }
 

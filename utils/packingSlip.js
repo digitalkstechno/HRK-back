@@ -159,8 +159,9 @@ function generatePackingSlipPDF(billing, res) {
   const rW = CONTENT_W * 0.35;
   const dt = new Date(billing.createdAt).toLocaleDateString("en-IN");
 
+  const customerName = billing.customer?.name || "Walk-in Customer";
   const infoRows = [
-    { l: ["M/s. :  ",      customer.name || ""],         r: ["Bill No :  ",      billing.billNumber || ""] },
+    { l: ["M/s. :  ",      customerName],         r: ["Bill No :  ",      billing.billNumber || ""] },
     { l: ["Party GST :  ", customer.gstNumber || "-"],   r: ["Date :  ",         dt] },
     { l: ["Transport :  ", transport.name || "-"],       r: ["Station/City :  ", customer.station || "-"] },
   ];

@@ -7,6 +7,8 @@ let ReturnSchema = new Schema(
     size: { type: Schema.Types.ObjectId, ref: "SizeMaster", required: true },
     qty: { type: Number, required: true, min: 1 },
     returnDate: { type: Date, required: true },
+    barcode: { type: String },
+    sequenceNumber: { type: Number },
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }

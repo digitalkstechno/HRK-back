@@ -24,9 +24,27 @@ const inventoryItemSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["In Stock", "Sold", "Reserved"],
+      enum: ["In Stock", "Sold", "Reserved", "Partial"],
       default: "In Stock",
     },
+    availableSizes: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "SizeMaster",
+      },
+    ],
+    lostSizes: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "SizeMaster",
+      },
+    ],
+    initialSizes: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "SizeMaster",
+      },
+    ],
     soldDate: {
       type: Date,
     },
@@ -39,6 +57,10 @@ const inventoryItemSchema = new Schema(
       ref: "Bill",
     },
     isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    isReturn: {
       type: Boolean,
       default: false,
     },

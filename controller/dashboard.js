@@ -10,30 +10,84 @@ exports.getDashboardStats = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1. Today's Sales
-    const todaySales = await Billing.aggregate([
-      { $match: { createdAt: { $gte: today }, isDeleted: false } },
-      { $group: { _id: null, total: { $sum: "$totalAmount" }, count: { $sum: 1 } } }
+    // Parallel execution of all major stats to drastically reduce response time
+    const [
+      todaySalesData,
+      totalProducts,
+      totalCustomers,
+      recentSalesFromDb,
+      categoryStats,
+      inventoryGlobalStats,
+      allProducts
+    ] = await Promise.all([
+      // 1. Today's Sales
+      Billing.aggregate([
+        { $match: { createdAt: { $gte: today }, isDeleted: false } },
+        { $group: { _id: null, total: { $sum: "$totalAmount" }, count: { $sum: 1 } } }
+      ]),
+
+      // 2. Total Products
+      Product.countDocuments({ isDeleted: false }),
+
+      // 3. Total Customers
+      Customer.countDocuments({ isDeleted: false }),
+
+      // 4. Recent Sales
+      Billing.find({ isDeleted: false })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate("customer", "name")
+        .lean(),
+
+      // 5. Products by Category (Single Aggregation instead of loop)
+      Product.aggregate([
+        { $match: { isDeleted: false, category: { $ne: null } } },
+        { $group: { _id: "$category", value: { $sum: 1 } } },
+        { $lookup: { from: "categorymasters", localField: "_id", foreignField: "_id", as: "cat" } },
+        { $unwind: "$cat" },
+        { $project: { _id: 0, name: "$cat.name", value: 1 } }
+      ]),
+
+      // 6 & 7. Combined Inventory & Low Stock Facet
+      InventoryItem.aggregate([
+          { $match: { isDeleted: false } }, // Main match
+          {
+            $facet: {
+              inventoryGlobal: [
+                { $match: { status: { $in: ["In Stock", "Sold"] } } },
+                { $group: { _id: "$status", count: { $sum: 1 } } }
+              ],
+              inStockByProduct: [
+                { $match: { status: "In Stock" } },
+                { $group: { _id: "$product", count: { $sum: 1 } } }
+              ]
+            }
+          }
+      ]),
+
+      // 8. Fetch basic product info to identify 0-stock products
+      Product.find({ isDeleted: false }).select("productCode designNo sku").lean()
     ]);
 
-    // 2. Total Products
-    const totalProducts = await Product.countDocuments({ isDeleted: false });
+    // Format Today's Sales
+    const todaySales = todaySalesData[0] || { total: 0, count: 0 };
 
-    // 3. Total Customers
-    const totalCustomers = await Customer.countDocuments({ isDeleted: false });
+    // Process Inventory Stats from Combined Facet result
+    const facetResult = inventoryGlobalStats[0] || { inventoryGlobal: [], inStockByProduct: [] };
+    const globalStatusData = facetResult.inventoryGlobal;
+    const inStockCounts = facetResult.inStockByProduct;
 
-    // 4. Low Stock Alert (Products with fewer than 10 items in stock)
-    const allProducts = await Product.find({ isDeleted: false }).select("productCode designNo sku");
+    const inStockGlobal = globalStatusData.find(i => i._id === "In Stock")?.count || 0;
+    const soldGlobal = globalStatusData.find(i => i._id === "Sold")?.count || 0;
+
+    // Process Low Stock in Memory (Extremely fast for thousands of records)
+    const stockMap = new Map();
+    inStockCounts.forEach(item => stockMap.set(item._id.toString(), item.count));
+
     const lowStockDetails = [];
     let lowStockCount = 0;
-
     for (const prod of allProducts) {
-        const stockCount = await InventoryItem.countDocuments({ 
-            product: prod._id, 
-            status: "In Stock", 
-            isDeleted: false 
-        });
-
+        const stockCount = stockMap.get(prod._id.toString()) || 0;
         if (stockCount < 10) {
             lowStockCount++;
             if (lowStockDetails.length < 10) {
@@ -47,35 +101,11 @@ exports.getDashboardStats = async (req, res) => {
         }
     }
 
-    // 5. Recent Sales
-    const recentSalesFromDb = await Billing.find({ isDeleted: false })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate("customer", "name");
-
-    // 6. Products by Category (Always visible if categories exist)
-    const allCategories = await CategoryMaster.find({ isDeleted: false }).select("name");
-    const categoryData = await Promise.all(allCategories.map(async (cat) => {
-        const prodCount = await Product.countDocuments({ 
-            category: cat._id, 
-            isDeleted: false 
-        });
-
-        return {
-            name: cat.name,
-            value: prodCount
-        };
-    }));
-
-    // 7. Inventory Status (Global)
-    const inStockGlobal = await InventoryItem.countDocuments({ status: "In Stock", isDeleted: false });
-    const soldGlobal = await InventoryItem.countDocuments({ status: "Sold", isDeleted: false });
-
     res.status(200).json({
       status: true,
       data: {
         stats: [
-          { title: "Today's Sales", value: `₹${(todaySales[0]?.total || 0).toLocaleString()}`, change: `${todaySales[0]?.count || 0} bills`, trend: "up", icon: "DollarSign", color: "text-green-600", bgColor: "bg-green-100" },
+          { title: "Today's Sales", value: `₹${(todaySales.total || 0).toLocaleString()}`, change: `${todaySales.count || 0} bills`, trend: "up", icon: "DollarSign", color: "text-green-600", bgColor: "bg-green-100" },
           { title: "Total Products", value: totalProducts.toLocaleString(), change: "Active items", trend: "up", icon: "Package", color: "text-blue-600", bgColor: "bg-blue-100" },
           { title: "Low Stock Alert", value: lowStockCount.toString(), change: "Needs attention", trend: "down", icon: "AlertTriangle", color: "text-orange-600", bgColor: "bg-orange-100", alert: lowStockCount > 0 },
           { title: "Total Customers", value: totalCustomers.toLocaleString(), change: "Retail & Wholesale", trend: "up", icon: "Users", color: "text-purple-600", bgColor: "bg-purple-100" },
@@ -87,7 +117,7 @@ exports.getDashboardStats = async (req, res) => {
             amount: `₹${s.totalAmount.toLocaleString()}`,
             time: formatTimeAgo(s.createdAt)
         })),
-        categoryData: categoryData,
+        categoryData: categoryStats,
         inventoryStatus: [
             { name: "In Stock", value: inStockGlobal },
             { name: "Sold", value: soldGlobal }

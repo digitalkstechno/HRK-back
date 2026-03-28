@@ -42,66 +42,77 @@ exports.fetchAllProducts = async (req, res) => {
     const productIds = products.map((p) => p._id);
 
     const INVENTORYITEM = require("../model/inventoryItem");
-    const RETURN = require("../model/return");
-    const ORDER_BOOKING = require("../model/orderBooking");
 
-    const BILLING = require("../model/billing");
-    // Gather all counts in bulk
-    const [inStockCounts, reservedCounts, returnCounts, sizeReturnCounts, lostOrDefectCounts] = await Promise.all([
-      INVENTORYITEM.aggregate([
-        { $match: { product: { $in: productIds }, status: "In Stock", isDeleted: { $ne: true } } },
-        { $group: { _id: "$product", count: { $sum: 1 } } }
-      ]),
-      ORDER_BOOKING.aggregate([
-        { $match: { product: { $in: productIds }, status: "Hold", isDeleted: { $ne: true } } },
-        { $group: { _id: "$product", total: { $sum: "$totalSets" } } }
-      ]),
-      RETURN.aggregate([
-        { $match: { product: { $in: productIds }, isDeleted: { $ne: true } } },
-        { $group: { _id: "$product", total: { $sum: "$qty" } } }
-      ]),
-      RETURN.aggregate([
-        { $match: { product: { $in: productIds }, isDeleted: { $ne: true } } },
-        { $group: { _id: { product: "$product", size: "$size" }, total: { $sum: "$qty" } } }
-      ]),
-      BILLING.aggregate([
-        { $match: { isDeleted: { $ne: true } } },
-        { $unwind: "$items" },
-        { $match: { "items.product": { $in: productIds } } },
-        { $unwind: "$items.lostOrDefect" },
-        { $group: { _id: { product: "$items.product", size: "$items.lostOrDefect.size" }, total: { $sum: "$items.lostOrDefect.qty" } } }
-      ])
+    // Aggregate inventory stats per product and per size
+    const inventoryStats = await INVENTORYITEM.aggregate([
+      { 
+        $match: { 
+          product: { $in: productIds }, 
+          isDeleted: { $ne: true } 
+        } 
+      },
+      { $unwind: "$availableSizes" },
+      {
+        $group: {
+          _id: { product: "$product", size: "$availableSizes" },
+          totalAvailable: { 
+            $sum: { $cond: [{ $in: ["$status", ["In Stock", "Partial"]] }, 1, 0] } 
+          },
+          totalReserved: { 
+            $sum: { $cond: [{ $eq: ["$status", "Reserved"] }, 1, 0] } 
+          }
+        }
+      }
     ]);
 
-    const inStockMap = Object.fromEntries(inStockCounts.map(c => [c._id.toString(), c.count]));
-    const reservedMap = Object.fromEntries(reservedCounts.map(c => [c._id.toString(), c.total]));
-    const returnMap = Object.fromEntries(returnCounts.map(c => [c._id.toString(), c.total]));
-    const sizeReturnMap = Object.fromEntries(sizeReturnCounts.map(c => [`${c._id.product}_${c._id.size}`, c.total]));
-    const lostOrDefectMap = Object.fromEntries(lostOrDefectCounts.map(c => [`${c._id.product}_${c._id.size}`, c.total]));
+    const ORDER_BOOKING = require("../model/orderBooking");
+    const posReservations = await ORDER_BOOKING.aggregate([
+        { $match: { product: { $in: productIds }, isDeleted: { $ne: true }, status: "Hold" } },
+        { $group: { _id: "$product", total: { $sum: "$totalSets" } } }
+    ]);
+    const posResMap = Object.fromEntries(posReservations.map(r => [r._id.toString(), r.total]));
+
+    const statsMap = {}; // key: productId_sizeId
+    inventoryStats.forEach(stat => {
+      statsMap[`${stat._id.product}_${stat._id.size}`] = {
+        available: stat.totalAvailable,
+        reserved: stat.totalReserved
+      };
+    });
 
     const data = products.map((p) => {
       const pId = p._id.toString();
-      const inStock = inStockMap[pId] || 0;
-      const reservedCount = reservedMap[pId] || 0;
-      const returnQty = returnMap[pId] || 0;
+      
+      let totalAvailableAcrossSizes = 0;
+      let totalReservedAcrossSizes = 0;
 
       const sizesWithCount = (p.sizes || []).map((s) => {
-        const sizeReturnQty = sizeReturnMap[`${pId}_${s._id.toString()}`] || 0;
-        const lostQty = lostOrDefectMap[`${pId}_${s._id.toString()}`] || 0;
-        return { ...s, count: inStock + sizeReturnQty, lostQty };
+        const stats = statsMap[`${pId}_${s._id.toString()}`] || { available: 0, reserved: 0 };
+        totalAvailableAcrossSizes += stats.available;
+        totalReservedAcrossSizes += stats.reserved;
+
+        return { 
+            ...s, 
+            count: stats.available, // This is what is shown as 'M: 34' etc.
+            reservedCount: stats.reserved 
+        };
       });
 
-      const allSizeCounts = sizesWithCount.map(s => s.count);
-      const totalPhysicalStock = allSizeCounts.length > 0 ? Math.min(...allSizeCounts) : (inStock + returnQty);
-      const totalLost = sizesWithCount.reduce((sum, s) => sum + s.lostQty, 0);
+      // Calculate 'Total Sets' conceptually. 
+      // If we have partials, it's hard to define a 'set'. 
+      // We'll use the minimum available of any size that was intended for this product.
+      const allCounts = sizesWithCount.map(s => s.count);
+      const physicalMin = allCounts.length > 0 ? Math.min(...allCounts) : 0;
+      
+      const posReservedSets = posResMap[pId] || 0;
+      const finalAvailableSets = Math.max(0, physicalMin - posReservedSets);
 
       return { 
         ...p, 
         sizes: sizesWithCount, 
-        totalInStock: Math.max(0, totalPhysicalStock - reservedCount),
-        totalReserved: reservedCount,
-        totalCount: totalPhysicalStock,
-        totalLost
+        totalInStock: totalAvailableAcrossSizes, // Raw sum of pieces
+        totalReserved: totalReservedAcrossSizes + (posReservedSets * (p.sizes?.length || 0)),
+        availableSets: finalAvailableSets // Best estimation of full sets
       };
     });
 
