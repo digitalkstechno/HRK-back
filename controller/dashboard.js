@@ -58,7 +58,7 @@ exports.getDashboardStats = async (req, res) => {
                 { $group: { _id: "$status", count: { $sum: 1 } } }
               ],
               inStockByProduct: [
-                { $match: { status: "In Stock" } },
+                { $match: { status: { $in: ["In Stock", "Partial"] } } },
                 { $group: { _id: "$product", count: { $sum: 1 } } }
               ]
             }

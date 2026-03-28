@@ -269,7 +269,13 @@ exports.fetchInventoryItems = async (req, res) => {
                 { product: { $in: productIdsFromSearch } }
             ];
         }
-        if (status) query.status = status;
+        if (status) {
+            if (status === "In Stock") {
+                query.status = { $in: ["In Stock", "Partial"] };
+            } else {
+                query.status = status;
+            }
+        }
         if (productId) {
             query.product = new mongoose.Types.ObjectId(productId);
         }
