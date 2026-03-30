@@ -10,91 +10,79 @@ exports.getDashboardStats = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Parallel execution of all major stats to drastically reduce response time
+    // Optimized parallel execution. Each query is targeted and utilizes indexes properly.
     const [
       todaySalesData,
       totalProducts,
       totalCustomers,
       recentSalesFromDb,
       categoryStats,
-      inventoryGlobalStats,
-      allProducts
+      inStockCount,
+      soldCount,
+      stockCountsPerProduct,
+      allActiveProducts
     ] = await Promise.all([
       // 1. Today's Sales
       Billing.aggregate([
-        { $match: { createdAt: { $gte: today }, isDeleted: false } },
+        { $match: { createdAt: { $gte: today }, isDeleted: false } }, // High-speed index match
         { $group: { _id: null, total: { $sum: "$totalAmount" }, count: { $sum: 1 } } }
       ]),
 
-      // 2. Total Products
+      // 2. Count metrics
       Product.countDocuments({ isDeleted: false }),
-
-      // 3. Total Customers
       Customer.countDocuments({ isDeleted: false }),
 
-      // 4. Recent Sales
+      // 3. Recent Sales (Lightweight fetch)
       Billing.find({ isDeleted: false })
         .sort({ createdAt: -1 })
         .limit(5)
         .populate("customer", "name")
+        .select("billNumber totalAmount createdAt customer")
         .lean(),
 
-      // 5. Products by Category (Single Aggregation instead of loop)
+      // 4. Products by Category (Single aggregate)
       Product.aggregate([
-        { $match: { isDeleted: false, category: { $ne: null } } },
+        { $match: { isDeleted: false } },
         { $group: { _id: "$category", value: { $sum: 1 } } },
         { $lookup: { from: "categorymasters", localField: "_id", foreignField: "_id", as: "cat" } },
         { $unwind: "$cat" },
         { $project: { _id: 0, name: "$cat.name", value: 1 } }
       ]),
 
-      // 6 & 7. Combined Inventory & Low Stock Facet
+      // 5. Global Inventory Stats (Direct counts are faster than facets)
+      InventoryItem.countDocuments({ isDeleted: false, status: "In Stock" }),
+      InventoryItem.countDocuments({ isDeleted: false, status: "Sold" }),
+
+      // 6. Stock mapping for low stock alert
       InventoryItem.aggregate([
-          { $match: { isDeleted: false } }, // Main match
-          {
-            $facet: {
-              inventoryGlobal: [
-                { $match: { status: { $in: ["In Stock", "Sold"] } } },
-                { $group: { _id: "$status", count: { $sum: 1 } } }
-              ],
-              inStockByProduct: [
-                { $match: { status: { $in: ["In Stock", "Partial"] } } },
-                { $group: { _id: "$product", count: { $sum: 1 } } }
-              ]
-            }
-          }
+        { $match: { isDeleted: false, status: { $in: ["In Stock", "Partial"] } } },
+        { $group: { _id: "$product", count: { $sum: 1 } } }
       ]),
 
-      // 8. Fetch basic product info to identify 0-stock products
+      // 7. Core product info
       Product.find({ isDeleted: false }).select("productCode designNo sku").lean()
     ]);
 
     // Format Today's Sales
     const todaySales = todaySalesData[0] || { total: 0, count: 0 };
 
-    // Process Inventory Stats from Combined Facet result
-    const facetResult = inventoryGlobalStats[0] || { inventoryGlobal: [], inStockByProduct: [] };
-    const globalStatusData = facetResult.inventoryGlobal;
-    const inStockCounts = facetResult.inStockByProduct;
-
-    const inStockGlobal = globalStatusData.find(i => i._id === "In Stock")?.count || 0;
-    const soldGlobal = globalStatusData.find(i => i._id === "Sold")?.count || 0;
-
-    // Process Low Stock in Memory (Extremely fast for thousands of records)
+    // Process Stock Alert in a high-speed Map operation
     const stockMap = new Map();
-    inStockCounts.forEach(item => stockMap.set(item._id.toString(), item.count));
+    stockCountsPerProduct.forEach(item => stockMap.set(item._id.toString(), item.count));
 
     const lowStockDetails = [];
     let lowStockCount = 0;
-    for (const prod of allProducts) {
-        const stockCount = stockMap.get(prod._id.toString()) || 0;
-        if (stockCount < 10) {
+    
+    // One-pass processing through all active products
+    for (const prod of allActiveProducts) {
+        const stock = stockMap.get(prod._id.toString()) || 0;
+        if (stock < 10) {
             lowStockCount++;
             if (lowStockDetails.length < 10) {
                 lowStockDetails.push({
                     product: `${prod.productCode} - ${prod.designNo}`,
                     sku: prod.sku,
-                    stock: stockCount,
+                    stock: stock,
                     reorderLevel: 10
                 });
             }
@@ -119,8 +107,8 @@ exports.getDashboardStats = async (req, res) => {
         })),
         categoryData: categoryStats,
         inventoryStatus: [
-            { name: "In Stock", value: inStockGlobal },
-            { name: "Sold", value: soldGlobal }
+            { name: "In Stock", value: inStockCount },
+            { name: "Sold", value: soldCount }
         ]
       }
     });
@@ -131,16 +119,9 @@ exports.getDashboardStats = async (req, res) => {
 };
 
 function formatTimeAgo(date) {
-    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-    let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + " years ago";
-    interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + " months ago";
-    interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + " days ago";
-    interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + " hours ago";
-    interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + " mins ago";
-    return Math.floor(seconds) + " seconds ago";
+    const diff = (new Date() - new Date(date)) / 1000;
+    if (diff < 60) return `${Math.floor(diff)} seconds ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} mins ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    return `${Math.floor(diff / 86400)} days ago`;
 }
