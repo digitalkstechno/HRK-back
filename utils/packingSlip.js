@@ -2,18 +2,19 @@ const PDFDocument = require("pdfkit");
 const path = require("path");
 const fs = require("fs");
 
-// A5 Dimensions in points: 420 x 595 (approx)
+// Logical Portrait Dimensions: 420 x 595
+// We will print this sideways on a 595 x 420 Landscape Page
 const PAGE_W = 420;
 const PAGE_H = 595; 
-const M = 25; 
+const M = 30; 
 const CONTENT_W = PAGE_W - M * 2;
 
 const COLS = [
-  { h: "Sr.",       w: 25,  align: "center" },
-  { h: "Design No", w: 90,  align: "center" },
+  { h: "Sr.",       w: 30,  align: "center" },
+  { h: "Design No", w: 100, align: "center" },
   { h: "Color",     w: 100, align: "center" },
-  { h: "Price",     w: 75,  align: "center" },
-  { h: "Pieces",    w: 80,  align: "center" },
+  { h: "Price",     w: 65,  align: "center" },
+  { h: "Pieces",    w: 65,  align: "center" },
 ];
 const TABLE_W = CONTENT_W;
 
@@ -58,10 +59,10 @@ function drawTable(doc, startX, startY, cols, rows, HDR_H, ROW_H) {
     doc.rect(startX, ry, totalW, ROW_H).fill(idx % 2 === 0 ? "#ffffff" : "#fbfbfb");
   });
 
-  doc.fontSize(9.5).font("Helvetica-Bold").fillColor("#ffffff");
+  doc.fontSize(10).font("Helvetica-Bold").fillColor("#ffffff");
   cols.forEach((col, i) => {
     const cx = startX + cols.slice(0, i).reduce((s, c) => s + c.w, 0);
-    doc.text(col.h.toUpperCase(), cx + 3, startY + (HDR_H - 9.5) / 2 + 1, {
+    doc.text(col.h.toUpperCase(), cx + 3, startY + (HDR_H - 10) / 2 + 1, {
       width: col.w - 6, align: "center", lineBreak: false,
     });
   });
@@ -71,10 +72,10 @@ function drawTable(doc, startX, startY, cols, rows, HDR_H, ROW_H) {
     cells.forEach((val, ci) => {
       const cx = startX + cols.slice(0, ci).reduce((s, c) => s + c.w, 0);
       const isQty = ci === cols.length - 1;
-      doc.fontSize(9.5)
+      doc.fontSize(10.5)
          .font(isQty ? "Helvetica-Bold" : "Helvetica")
          .fillColor("#000000")
-         .text(String(val), cx + 3, ry + (ROW_H - 9.5) / 2 + 1, {
+         .text(String(val), cx + 3, ry + (ROW_H - 10.5) / 2 + 1, {
            width: cols[ci].w - 6, align: cols[ci].align, lineBreak: false,
          });
     });
@@ -103,37 +104,41 @@ function generatePackingSlipPDF(billing, res) {
   const ROW_H = 22; 
   const HDR_H = 24; 
 
-  const doc = new PDFDocument({ size: "A5", margin: 0 });
+  // Physical page: 595 x 420 (Landscape)
+  const doc = new PDFDocument({ size: [595, 420], margin: 0 }); 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="packing-slip-${billing.billNumber}.pdf"`);
   doc.pipe(res);
 
+  // ROTATE CANVAS 90 DEGREES TO FIT PORTRAIT CONTENT SIDEWAYS
+  doc.translate(595, 0).rotate(90);
+
   let y = M;
 
   doc.rect(M, y, CONTENT_W, 2.5).fill("#000000");
-  y += 10;
+  y += 12;
 
   const logoPath = path.join(__dirname, "../public/hrk_logo.png");
-  const LOGO_W = 70, LOGO_H = 35;
+  const LOGO_W = 75, LOGO_H = 38;
 
   if (fs.existsSync(logoPath)) {
     doc.image(logoPath, PAGE_W / 2 - LOGO_W / 2, y, { width: LOGO_W, height: LOGO_H });
   } else {
-    doc.fontSize(22).font("Helvetica-Bold").fillColor("#000")
+    doc.fontSize(24).font("Helvetica-Bold").fillColor("#000")
        .text("HRK", 0, y + 5, { width: PAGE_W, align: "center", lineBreak: false });
   }
 
   doc.fontSize(8.5).font("Helvetica").fillColor("#444")
-     .text("GST: 24ADEFS1747D1ZC", 0, y + LOGO_H + 5, { width: PAGE_W, align: "center", lineBreak: false });
+     .text("GST: 24ADEFS1747D1ZC", 0, y + LOGO_H + 6, { width: PAGE_W, align: "center", lineBreak: false });
 
   const phones = ["99136 39997", "90332 52577", "97125 34039"];
-  doc.fontSize(9).font("Helvetica-Bold").fillColor("#000");
+  doc.fontSize(10).font("Helvetica-Bold").fillColor("#000");
   phones.forEach((p, i) => {
     doc.text(p, PAGE_W - M - 110, y + i * 13, { width: 110, align: "right", lineBreak: false });
   });
 
-  doc.fontSize(16).font("Helvetica-Bold").fillColor("#000")
-     .text("PACKING SLIP", M, y + 8, { width: 200, lineBreak: false });
+  doc.fontSize(18).font("Helvetica-Bold").fillColor("#000")
+     .text("PACKING SLIP", M, y + 10, { width: 220, lineBreak: false });
 
   y += LOGO_H + 20;
 
@@ -148,14 +153,14 @@ function generatePackingSlipPDF(billing, res) {
   const customerName = billing.customer?.name || "Walk-in Customer";
   const infoRows = [
     { l: ["M/s. :  ",      customerName],         r: ["Bill No :  ",      billing.billNumber || ""] },
-    { l: ["GST :  ", customer.gstNumber || "-"],   r: ["Date :  ",         dt] },
+    { l: ["GST :  ",      customer.gstNumber || "-"],    r: ["Date :  ",         dt] },
     { l: ["Transport :  ", transport.name || "-"],       r: ["Station :  ", customer.station || "-"] },
   ];
 
-  const lValW = lW - 60;
-  const rValW = rW - 60;
-  const PADDING = 6;
-  doc.fontSize(9.5);
+  const lValW = lW - 65;
+  const rValW = rW - 65;
+  const PADDING = 7;
+  doc.fontSize(10.5);
 
   infoRows.forEach(({ l, r }) => {
     doc.font("Helvetica");
@@ -163,21 +168,21 @@ function generatePackingSlipPDF(billing, res) {
     const rh = doc.heightOfString(r[1], { width: rValW });
     const rowH = Math.max(lh, rh) + PADDING * 2;
 
-    doc.rect(M, y, CONTENT_W, rowH).lineWidth(1).stroke("#000000");
-    doc.moveTo(rX, y).lineTo(rX, y + rowH).lineWidth(1).stroke("#000000");
+    doc.rect(M, y, CONTENT_W, rowH).lineWidth(1.1).stroke("#000000");
+    doc.moveTo(rX, y).lineTo(rX, y + rowH).lineWidth(1.1).stroke("#000000");
 
     const ry = y + PADDING;
 
-    doc.font("Helvetica-Bold").fillColor("#000").text(l[0], M + 8, ry, { lineBreak: false, width: 55 });
-    doc.font("Helvetica").fillColor("#000").text(l[1], M + 8 + 55, ry, { width: lValW, lineBreak: true });
+    doc.font("Helvetica-Bold").fillColor("#000").text(l[0], M + 10, ry, { lineBreak: false, width: 60 });
+    doc.font("Helvetica").fillColor("#000").text(l[1], M + 10 + 60, ry, { width: lValW, lineBreak: true });
 
-    doc.font("Helvetica-Bold").fillColor("#000").text(r[0], rX + 8, ry, { lineBreak: false, width: 55 });
-    doc.font("Helvetica").fillColor("#000").text(r[1], rX + 8 + 55, ry, { width: rValW, lineBreak: true });
+    doc.font("Helvetica-Bold").fillColor("#000").text(r[0], rX + 10, ry, { lineBreak: false, width: 60 });
+    doc.font("Helvetica").fillColor("#000").text(r[1], rX + 10 + 60, ry, { width: rValW, lineBreak: true });
 
     y += rowH;
   });
 
-  y += 12;
+  y += 15;
 
   const tableRows = grouped.map((row, idx) => [
     String(idx + 1),
@@ -190,30 +195,30 @@ function generatePackingSlipPDF(billing, res) {
   drawTable(doc, M, y, COLS, tableRows, HDR_H, ROW_H);
   y += HDR_H + grouped.length * ROW_H;
 
-  const TOTAL_H = 22;
-  doc.rect(M, y, TABLE_W, TOTAL_H).lineWidth(1).stroke("#000000");
+  const TOTAL_H = 24;
+  doc.rect(M, y, TABLE_W, TOTAL_H).lineWidth(1.1).stroke("#000000");
   const totalPieces = grouped.reduce((s, r) => s + (r.pieces || 0), 0);
-  doc.fontSize(10.5).font("Helvetica-Bold").fillColor("#000")
-     .text(`TOTAL PIECES : ${totalPieces}`, M, y + (TOTAL_H - 10.5) / 2, {
-       width: TABLE_W - 12, align: "right", lineBreak: false,
+  doc.fontSize(11).font("Helvetica-Bold").fillColor("#000")
+     .text(`TOTAL PIECES : ${totalPieces}`, M, y + (TOTAL_H - 11) / 2, {
+       width: TABLE_W - 15, align: "right", lineBreak: false,
      });
 
   const FOOTER_H = 65;
   const footerY = PAGE_H - M - FOOTER_H;
 
-  doc.rect(M, footerY, CONTENT_W, FOOTER_H).lineWidth(1).stroke("#000000");
-  const sigDivX = M + CONTENT_W / 2;
-  doc.moveTo(sigDivX, footerY).lineTo(sigDivX, footerY + FOOTER_H).lineWidth(0.8).stroke("#000000");
+  doc.rect(M, footerY, CONTENT_W, FOOTER_H).lineWidth(1.1).stroke("#000000");
+  
+  doc.fontSize(8.5).font("Helvetica").fillColor("#000")
+     .text("1. Received the above goods in good condition.", M + 12, footerY + 12, { lineBreak: false })
+     .text("2. Subject to Surat Jurisdiction.", M + 12, footerY + 24, { lineBreak: false });
 
-  doc.fontSize(8).font("Helvetica").fillColor("#000")
-     .text("1. Received the above goods in good condition.", M + 8, footerY + 10, { lineBreak: false })
-     .text("2. Subject to Surat Jurisdiction.", M + 8, footerY + 22, { lineBreak: false });
+  doc.moveTo(M, footerY + 40).lineTo(M + CONTENT_W, footerY + 40).lineWidth(0.5).stroke("#bbbbbb");
 
-  doc.moveTo(M, footerY + 38).lineTo(M + CONTENT_W, footerY + 38).lineWidth(0.5).stroke("#bbbbbb");
+  doc.fontSize(9).font("Helvetica-Bold").fillColor("#000")
+     .text("PACKED BY : _______________", M + 12, footerY + 48, { lineBreak: false });
 
-  doc.fontSize(8.5).font("Helvetica-Bold").fillColor("#000")
-     .text("PACKED BY : _______________", M + 8, footerY + 48, { lineBreak: false });
-  doc.text("CHECKED BY : _______________", sigDivX + 8, footerY + 48, { lineBreak: false });
+  const sigDivX = M + CONTENT_W / 2; // Keep for positioning text
+  doc.text("CHECKED BY : _______________", sigDivX + 12, footerY + 48, { lineBreak: false });
 
   doc.rect(M, PAGE_H - M - 2.5, CONTENT_W, 2.5).fill("#000000");
 
