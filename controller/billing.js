@@ -238,8 +238,10 @@ exports.scanBarcode = async (req, res) => {
             availableQuota = selectedReservationTotal;
         } else {
             // SCENARIO 2: Regular scan (must use unreserved stock)
-            // Available = Physical - Others' Reservations - My own Reservations (since I'm not explicitly filling them via selection)
-            availableQuota = totalPhysicalOnPage - reservedCountOthers - myTotalReservation;
+            // If scanning for a customer, we allow them to scan their OWN reserved stock 
+            // even if not explicitly selected yet (to avoid friction).
+            availableQuota = totalPhysicalOnPage - reservedCountOthers; 
+            // We NO LONGER subtract myTotalReservation here if currentCustomerId is present.
         }
 
         if (availableQuota <= alreadyScanned) {
@@ -247,7 +249,7 @@ exports.scanBarcode = async (req, res) => {
                 success: false, 
                 message: isReserved 
                     ? `Order Limit: You already scanned ${alreadyScanned} of the ${myTotalReservation} reserved sets for ${product.productCode}.`
-                    : `Availability Limit: Only ${Math.max(0, availableQuota)} unreserved sets of ${product.productCode} are currently available. Existing stock is reserved (some by you).` 
+                    : `Availability Limit: Only ${Math.max(0, availableQuota)} sets of ${product.productCode} are currently available. Remaining stock is reserved by other customers.` 
             });
         }
 
