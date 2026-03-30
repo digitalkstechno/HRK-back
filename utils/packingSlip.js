@@ -2,19 +2,18 @@ const PDFDocument = require("pdfkit");
 const path = require("path");
 const fs = require("fs");
 
-// Logical Portrait Dimensions: 420 x 595
-// We will print this sideways on a 595 x 420 Landscape Page
-const PAGE_W = 420;
-const PAGE_H = 595; 
+// Logical Portrait Dimensions: A4 (595.28 x 841.89)
+const PAGE_W = 595.28;
+const PAGE_H = 841.89; 
 const M = 30; 
 const CONTENT_W = PAGE_W - M * 2;
 
 const COLS = [
-  { h: "Sr.",       w: 30,  align: "center" },
-  { h: "Design No", w: 100, align: "center" },
-  { h: "Color",     w: 100, align: "center" },
-  { h: "Price",     w: 65,  align: "center" },
-  { h: "Pieces",    w: 65,  align: "center" },
+  { h: "Sr.",       w: 45,  align: "center" },
+  { h: "Design No", w: 148, align: "center" },
+  { h: "Color",     w: 148, align: "center" },
+  { h: "Price",     w: 97,  align: "center" },
+  { h: "Pieces",    w: 97,  align: "center" },
 ];
 const TABLE_W = CONTENT_W;
 
@@ -104,14 +103,11 @@ function generatePackingSlipPDF(billing, res) {
   const ROW_H = 22; 
   const HDR_H = 24; 
 
-  // Physical page: 595 x 420 (Landscape)
-  const doc = new PDFDocument({ size: [595, 420], margin: 0 }); 
+  // Physical page: A4 (595.28 x 841.89)
+  const doc = new PDFDocument({ size: "A4", margin: 0, layout: "portrait" }); 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="packing-slip-${billing.billNumber}.pdf"`);
   doc.pipe(res);
-
-  // ROTATE CANVAS 90 DEGREES TO FIT PORTRAIT CONTENT SIDEWAYS
-  doc.translate(595, 0).rotate(90);
 
   let y = M;
 
