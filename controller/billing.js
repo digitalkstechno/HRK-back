@@ -106,13 +106,14 @@ exports.createBilling = async (req, res) => {
     // Generate Slip Number
     const lastSlip = await BILLING.findOne({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
     let slipNumber = 1;
-    if (lastSlip && lastSlip.billNumber && lastSlip.billNumber.startsWith("SLIP-")) {
-        const lastNum = parseInt(lastSlip.billNumber.split("-")[1]);
-        if (!isNaN(lastNum)) {
-            slipNumber = lastNum + 1;
+    if (lastSlip && lastSlip.billNumber) {
+        // Handle both "SLIP-123" and "123" formats for backward compatibility
+        const match = lastSlip.billNumber.match(/\d+/);
+        if (match) {
+            slipNumber = parseInt(match[match.length - 1]) + 1;
         }
     }
-    const billNumber = `SLIP-${slipNumber}`;
+    const billNumber = slipNumber.toString();
 
     const billing = await BILLING.create({ 
         billNumber,
