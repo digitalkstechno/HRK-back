@@ -94,8 +94,8 @@ exports.createBilling = async (req, res) => {
     }
 
     // Generate Slip Number
-    const lastSlip = await BILLING.findOne({}).sort({ createdAt: -1 });
-    let slipNumber = 1000;
+    const lastSlip = await BILLING.findOne({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+    let slipNumber = 1;
     if (lastSlip && lastSlip.billNumber && lastSlip.billNumber.startsWith("SLIP-")) {
         const lastNum = parseInt(lastSlip.billNumber.split("-")[1]);
         if (!isNaN(lastNum)) {
