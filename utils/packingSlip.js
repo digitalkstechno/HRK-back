@@ -58,10 +58,10 @@ function drawTable(doc, startX, startY, cols, rows, HDR_H, ROW_H) {
     doc.rect(startX, ry, totalW, ROW_H).fill(idx % 2 === 0 ? "#ffffff" : "#fbfbfb");
   });
 
-  doc.fontSize(10).font("Helvetica-Bold").fillColor("#ffffff");
+  doc.fontSize(12).font("Helvetica-Bold").fillColor("#ffffff");
   cols.forEach((col, i) => {
     const cx = startX + cols.slice(0, i).reduce((s, c) => s + c.w, 0);
-    doc.text(col.h.toUpperCase(), cx + 3, startY + (HDR_H - 10) / 2 + 1, {
+    doc.text(col.h.toUpperCase(), cx + 3, startY + (HDR_H - 12) / 2 + 1, {
       width: col.w - 6, align: "center", lineBreak: false,
     });
   });
@@ -71,10 +71,10 @@ function drawTable(doc, startX, startY, cols, rows, HDR_H, ROW_H) {
     cells.forEach((val, ci) => {
       const cx = startX + cols.slice(0, ci).reduce((s, c) => s + c.w, 0);
       const isQty = ci === cols.length - 1;
-      doc.fontSize(10.5)
+      doc.fontSize(12)
          .font(isQty ? "Helvetica-Bold" : "Helvetica")
          .fillColor("#000000")
-         .text(String(val), cx + 3, ry + (ROW_H - 10.5) / 2 + 1, {
+         .text(String(val), cx + 3, ry + (ROW_H - 12) / 2 + 1, {
            width: cols[ci].w - 6, align: cols[ci].align, lineBreak: false,
          });
     });
@@ -100,8 +100,8 @@ function generatePackingSlipPDF(billing, res) {
   const transport = customer.transport || {};
   const grouped   = groupItems(billing.items || []);
 
-  const ROW_H = 22; 
-  const HDR_H = 24; 
+  const ROW_H = 26; 
+  const HDR_H = 30; 
 
   // Physical page: A4 (595.28 x 841.89)
   const doc = new PDFDocument({ size: "A4", margin: 0, layout: "portrait" }); 
@@ -124,17 +124,17 @@ function generatePackingSlipPDF(billing, res) {
        .text("HRK", 0, y + 5, { width: PAGE_W, align: "center", lineBreak: false });
   }
 
-  doc.fontSize(8.5).font("Helvetica").fillColor("#444")
+  doc.fontSize(10).font("Helvetica").fillColor("#444")
      .text("GST: 24ADEFS1747D1ZC", 0, y + LOGO_H + 6, { width: PAGE_W, align: "center", lineBreak: false });
 
   const phones = ["99136 39997", "90332 52577", "97125 34039"];
-  doc.fontSize(10).font("Helvetica-Bold").fillColor("#000");
+  doc.fontSize(12).font("Helvetica-Bold").fillColor("#000");
   phones.forEach((p, i) => {
-    doc.text(p, PAGE_W - M - 110, y + i * 13, { width: 110, align: "right", lineBreak: false });
+    doc.text(p, PAGE_W - M - 110, y + i * 15, { width: 110, align: "right", lineBreak: false });
   });
 
-  doc.fontSize(18).font("Helvetica-Bold").fillColor("#000")
-     .text("PACKING SLIP", M, y + 10, { width: 220, lineBreak: false });
+  doc.fontSize(22).font("Helvetica-Bold").fillColor("#000")
+     .text("PACKING SLIP", M, y + 5, { width: 220, lineBreak: false });
 
   y += LOGO_H + 20;
 
@@ -153,10 +153,10 @@ function generatePackingSlipPDF(billing, res) {
     { l: ["Transport :  ", transport.name || "-"],       r: ["Station :  ", customer.station || "-"] },
   ];
 
-  const lValW = lW - 65;
-  const rValW = rW - 65;
-  const PADDING = 7;
-  doc.fontSize(10.5);
+  const lValW = lW - 75;
+  const rValW = rW - 75;
+  const PADDING = 8;
+  doc.fontSize(12);
 
   infoRows.forEach(({ l, r }) => {
     doc.font("Helvetica");
@@ -169,11 +169,11 @@ function generatePackingSlipPDF(billing, res) {
 
     const ry = y + PADDING;
 
-    doc.font("Helvetica-Bold").fillColor("#000").text(l[0], M + 10, ry, { lineBreak: false, width: 60 });
-    doc.font("Helvetica").fillColor("#000").text(l[1], M + 10 + 60, ry, { width: lValW, lineBreak: true });
+    doc.font("Helvetica-Bold").fillColor("#000").text(l[0], M + 10, ry, { lineBreak: false, width: 70 });
+    doc.font("Helvetica").fillColor("#000").text(l[1], M + 10 + 70, ry, { width: lValW, lineBreak: true });
 
-    doc.font("Helvetica-Bold").fillColor("#000").text(r[0], rX + 10, ry, { lineBreak: false, width: 60 });
-    doc.font("Helvetica").fillColor("#000").text(r[1], rX + 10 + 60, ry, { width: rValW, lineBreak: true });
+    doc.font("Helvetica-Bold").fillColor("#000").text(r[0], rX + 10, ry, { lineBreak: false, width: 70 });
+    doc.font("Helvetica").fillColor("#000").text(r[1], rX + 10 + 70, ry, { width: rValW, lineBreak: true });
 
     y += rowH;
   });
@@ -191,11 +191,11 @@ function generatePackingSlipPDF(billing, res) {
   drawTable(doc, M, y, COLS, tableRows, HDR_H, ROW_H);
   y += HDR_H + grouped.length * ROW_H;
 
-  const TOTAL_H = 24;
+  const TOTAL_H = 30;
   doc.rect(M, y, TABLE_W, TOTAL_H).lineWidth(1.1).stroke("#000000");
   const totalPieces = grouped.reduce((s, r) => s + (r.pieces || 0), 0);
-  doc.fontSize(11).font("Helvetica-Bold").fillColor("#000")
-     .text(`TOTAL PIECES : ${totalPieces}`, M, y + (TOTAL_H - 11) / 2, {
+  doc.fontSize(14).font("Helvetica-Bold").fillColor("#000")
+     .text(`TOTAL PIECES : ${totalPieces}`, M, y + (TOTAL_H - 14) / 2, {
        width: TABLE_W - 15, align: "right", lineBreak: false,
      });
 
@@ -204,17 +204,17 @@ function generatePackingSlipPDF(billing, res) {
 
   doc.rect(M, footerY, CONTENT_W, FOOTER_H).lineWidth(1.1).stroke("#000000");
   
-  doc.fontSize(8.5).font("Helvetica").fillColor("#000")
+  doc.fontSize(10).font("Helvetica").fillColor("#000")
      .text("1. Received the above goods in good condition.", M + 12, footerY + 12, { lineBreak: false })
-     .text("2. Subject to Surat Jurisdiction.", M + 12, footerY + 24, { lineBreak: false });
+     .text("2. Subject to Surat Jurisdiction.", M + 12, footerY + 26, { lineBreak: false });
 
   doc.moveTo(M, footerY + 40).lineTo(M + CONTENT_W, footerY + 40).lineWidth(0.5).stroke("#bbbbbb");
 
-  doc.fontSize(9).font("Helvetica-Bold").fillColor("#000")
-     .text("PACKED BY : _______________", M + 12, footerY + 48, { lineBreak: false });
+  doc.fontSize(11).font("Helvetica-Bold").fillColor("#000")
+     .text("PACKED BY : _______________", M + 12, footerY + 45, { lineBreak: false });
 
   const sigDivX = M + CONTENT_W / 2; // Keep for positioning text
-  doc.text("CHECKED BY : _______________", sigDivX + 12, footerY + 48, { lineBreak: false });
+  doc.text("CHECKED BY : _______________", sigDivX + 12, footerY + 45, { lineBreak: false });
 
   doc.rect(M, PAGE_H - M - 2.5, CONTENT_W, 2.5).fill("#000000");
 
