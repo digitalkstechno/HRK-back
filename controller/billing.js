@@ -18,14 +18,44 @@ exports.createBilling = async (req, res) => {
       fulfilledReservationIds = []
     } = req.body;
     
-    // --- QUOTA VALIDATION ---
-    const productIds = Array.from(new Set(items.map(i => i.product)));
+    // --- QUOTA & FULFILLMENT VALIDATION ---
+    const selectedResIds = (fulfilledReservationIds || []).filter(id => id && id.length === 24);
+    
+    // 1. Get all selected reservations to check products and required quantities
+    const selectedResDocs = await ORDER_BOOKING.find({
+        _id: { $in: selectedResIds.map(id => new mongoose.Types.ObjectId(id)) },
+        status: "Hold"
+    });
+
+    const reservationRequirements = new Map(); // pId -> requiredSets
+    selectedResDocs.forEach(res => {
+        const pId = res.product.toString();
+        reservationRequirements.set(pId, (reservationRequirements.get(pId) || 0) + res.totalSets);
+    });
+
+    // 2. Validate Scanned Items against Reservations and Unreserved Stock
+    const scannedProductIds = Array.from(new Set(items.map(i => i.product.toString())));
+    
+    // Combine all products that are either scanned or reserved
+    const allRelevantProductIds = Array.from(new Set([...scannedProductIds, ...reservationRequirements.keys()]));
+
     const RETURN = require("../model/return");
-    for (const pId of productIds) {
-        const itemQtyInBill = items.filter(i => i.product.toString() === pId.toString()).length;
+    for (const pId of allRelevantProductIds) {
+        const itemQtyInBill = items.filter(i => i.product.toString() === pId).length;
+        const requiredByReservation = reservationRequirements.get(pId) || 0;
         const productInfo = await PRODUCT.findById(pId).populate("sizes");
         
-        // 1. Calculate Physical Sets (Minimum across sizes) - Now including BOTH In Stock and Reserved items
+        if (!productInfo) continue;
+
+        // FULFILLMENT CHECK: If this product has a selected reservation, it MUST be fully scanned
+        if (requiredByReservation > 0 && itemQtyInBill < requiredByReservation) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Incomplete Fulfillment: You selected reservations for ${requiredByReservation} sets of ${productInfo.productCode}, but only scanned ${itemQtyInBill} sets. Please scan all reserved items before saving.` 
+            });
+        }
+
+        // 1. Calculate Physical Sets (Minimum across sizes)
         const physicalInInv = await INVENTORYITEM.countDocuments({ 
             product: pId, 
             status: { $in: ["In Stock", "Reserved"] }, 
@@ -42,49 +72,29 @@ exports.createBilling = async (req, res) => {
         }));
         const totalPhysicalSets = sizeCounts.length > 0 ? Math.min(...sizeCounts) : physicalInInv;
 
-        // 2. Calculate All Reservations for this product
-        const allReservQuery = { 
-            product: new mongoose.Types.ObjectId(pId), 
-            isDeleted: { $ne: true }, 
-            status: "Hold" 
-        };
-
+        // 2. Calculate All Reservations for this product (to prevent over-billing unreserved stock)
         const totalReservedAgg = await ORDER_BOOKING.aggregate([
-            { $match: allReservQuery },
+            { $match: { product: new mongoose.Types.ObjectId(pId), isDeleted: { $ne: true }, status: "Hold" } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
         const totalReservedAll = totalReservedAgg[0]?.total || 0;
 
-        // 3. Calculate specifically SELECTED reservations for CURRENT billing
-        const selectedResIds = (fulfilledReservationIds || []).filter(id => id && id.length === 24);
-        const selectedResAgg = await ORDER_BOOKING.aggregate([
-            { $match: { 
-                _id: { $in: selectedResIds.map(id => new mongoose.Types.ObjectId(id)) },
-                product: new mongoose.Types.ObjectId(pId),
-                status: "Hold"
-            } },
-            { $group: { _id: null, total: { $sum: "$totalSets" } } }
-        ]);
-        const selectedResTotal = selectedResAgg[0]?.total || 0;
-
-        // 4. Formula: Strict Separation
+        // 3. Formula: Availability for the current user
         let availableForMe;
         let quotaMessage = "";
-        if (selectedResTotal > 0) {
-            // Fulfilling specific reservation -> Limit is ONLY the reserved qty
-            availableForMe = selectedResTotal;
-            quotaMessage = `Your selected reservation limit for ${productInfo.productCode} is ${selectedResTotal} sets.`;
+        if (requiredByReservation > 0) {
+            // Fulfilling specific reservation -> Limit is EXACTLY the reserved qty
+            availableForMe = requiredByReservation;
+            quotaMessage = `Your selected reservation limit for ${productInfo.productCode} is ${requiredByReservation} sets.`;
         } else {
             // General scan -> Limit is unreserved stock
             availableForMe = Math.max(0, totalPhysicalSets - totalReservedAll);
             quotaMessage = `Unreserved Availability: Only ${availableForMe} sets of ${productInfo.productCode} are currently free for non-reserved billing.`;
         }
 
-        console.log(`[DEBUG] Final Available for Me: ${availableForMe}`);
-
-        if (availableForMe < itemQtyInBill) {
-            const extraMsg = selectedResTotal > 0 
-                ? `You scanned ${itemQtyInBill} pieces but only ${selectedResTotal} are selected for fulfillment. Please uncheck reservation or reduce quantity.` 
+        if (itemQtyInBill > availableForMe) {
+            const extraMsg = requiredByReservation > 0 
+                ? `You scanned ${itemQtyInBill} pieces but only ${requiredByReservation} are reserved. Please reduce quantity.` 
                 : "Remaining stock is reserved for other orders.";
             return res.status(400).json({ 
                 success: false, 
@@ -112,7 +122,8 @@ exports.createBilling = async (req, res) => {
         subtotal,
         discountPercent,
         gstEnabled,
-        gstPercent
+        gstPercent,
+        fulfilledReservations: fulfilledReservationIds
     });
 
     // Update Inventory Items status and available sizes
@@ -317,7 +328,8 @@ exports.fetchBillingById = async (req, res) => {
   try {
     const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
       .populate({ path: "customer", populate: { path: "transport" } })
-      .populate({ path: "items.product", populate: { path: "sizes", select: "name" } });
+      .populate({ path: "items.product", populate: { path: "sizes", select: "name" } })
+      .populate({ path: "fulfilledReservations", populate: { path: "product", populate: { path: "sizes" } } });
     if (!billing) {
       return res.status(404).json({ success: false, message: "Billing not found" });
     }
@@ -345,15 +357,42 @@ exports.updateBilling = async (req, res) => {
         return res.status(404).json({ success: false, message: "Billing not found" });
     }
 
-    // --- QUOTA VALIDATION (considering items already in stock because we haven't reverted yet) ---
-    const productIds = Array.from(new Set(items.map(i => i.product)));
+    // --- QUOTA & FULFILLMENT VALIDATION ---
+    const selectedResIds = (fulfilledReservationIds || []).filter(id => id && id.length === 24);
+    
+    // 1. Get all selected reservations
+    const selectedResDocs = await ORDER_BOOKING.find({
+        _id: { $in: selectedResIds.map(id => new mongoose.Types.ObjectId(id)) },
+        status: { $in: ["Hold", "Closed"] }
+    });
+
+    const reservationRequirements = new Map(); // pId -> requiredSets
+    selectedResDocs.forEach(res => {
+        const pId = res.product.toString();
+        reservationRequirements.set(pId, (reservationRequirements.get(pId) || 0) + res.totalSets);
+    });
+
+    const scannedProductIds = Array.from(new Set(items.map(i => i.product.toString())));
+    const allRelevantProductIds = Array.from(new Set([...scannedProductIds, ...reservationRequirements.keys()]));
+
     const RETURN = require("../model/return");
-    for (const pId of productIds) {
-        const itemQtyInBill = items.filter(i => i.product.toString() === pId.toString()).length;
-        const oldQtyInBill = oldBilling.items.filter(i => i.product.toString() === pId.toString()).length;
+    for (const pId of allRelevantProductIds) {
+        const itemQtyInBill = items.filter(i => i.product.toString() === pId).length;
+        const oldQtyInBill = oldBilling.items.filter(i => i.product.toString() === pId).length;
+        const requiredByReservation = reservationRequirements.get(pId) || 0;
         const productInfo = await PRODUCT.findById(pId).populate("sizes");
         
-        // 1. Calculate Physical Sets (Minimum across sizes) - Now including BOTH In Stock and Reserved items
+        if (!productInfo) continue;
+
+        // FULFILLMENT CHECK: If this product has a selected reservation, it MUST be fully scanned
+        if (requiredByReservation > 0 && itemQtyInBill < requiredByReservation) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Incomplete Fulfillment: You selected reservations for ${requiredByReservation} sets of ${productInfo.productCode}, but only scanned ${itemQtyInBill} sets. Please scan all reserved items before updating.` 
+            });
+        }
+
+        // 1. Calculate Physical Sets
         const physicalInInv = await INVENTORYITEM.countDocuments({ 
             product: pId, 
             status: { $in: ["In Stock", "Reserved"] }, 
@@ -368,46 +407,27 @@ exports.updateBilling = async (req, res) => {
             return physicalInInv + (sizeReturnAgg[0]?.total || 0);
         }));
         const totalPhysicalSets = sizeCounts.length > 0 ? Math.min(...sizeCounts) : physicalInInv;
-        const totalPotentiallyAvailable = totalPhysicalSets + oldQtyInBill;
 
-        // 2. Calculate All Reservations for this product
-        const allReservQuery = { 
-            product: new mongoose.Types.ObjectId(pId), 
-            isDeleted: { $ne: true }, 
-            status: "Hold" 
-        };
-
+        // 2. Calculate All Reservations
         const totalReservedAgg = await ORDER_BOOKING.aggregate([
-            { $match: allReservQuery },
+            { $match: { product: new mongoose.Types.ObjectId(pId), isDeleted: { $ne: true }, status: "Hold" } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
         const totalReservedAll = totalReservedAgg[0]?.total || 0;
 
-        // 3. Calculate specifically SELECTED reservations
-        const selectedResIds = (fulfilledReservationIds || []).filter(id => id && id.length === 24);
-        const selectedResAgg = await ORDER_BOOKING.aggregate([
-            { $match: { 
-                _id: { $in: selectedResIds.map(id => new mongoose.Types.ObjectId(id)) },
-                product: new mongoose.Types.ObjectId(pId),
-                status: "Hold"
-            } },
-            { $group: { _id: null, total: { $sum: "$totalSets" } } }
-        ]);
-        const selectedResTotal = selectedResAgg[0]?.total || 0;
-
-        // 4. Formula: Strict Separation (Including Old Qty)
+        // 3. Formula: Availability
         let availableForMe;
         let quotaMessage = "";
-        if (selectedResTotal > 0) {
-            availableForMe = selectedResTotal + oldQtyInBill;
+        if (requiredByReservation > 0) {
+            availableForMe = requiredByReservation + oldQtyInBill;
             quotaMessage = `Your reservation limit (+ existing) for ${productInfo.productCode} is ${availableForMe} sets.`;
         } else {
             availableForMe = Math.max(0, totalPhysicalSets - totalReservedAll) + oldQtyInBill;
             quotaMessage = `Unreserved Availability (+ existing): Only ${availableForMe} sets of ${productInfo.productCode} are free.`;
         }
 
-        if (availableForMe < itemQtyInBill) {
-            const extraMsg = selectedResTotal > 0 
+        if (itemQtyInBill > availableForMe) {
+            const extraMsg = requiredByReservation > 0 
             ? `You attempted to bill ${itemQtyInBill} but only ${availableForMe} are permitted under this reservation. Check scanned items.` 
             : "Remaining stock is reserved.";
             return res.status(400).json({ 
@@ -440,6 +460,14 @@ exports.updateBilling = async (req, res) => {
         }
     }
 
+    // Revert Old Reservations to 'Hold'
+    if (oldBilling.fulfilledReservations?.length > 0) {
+        await ORDER_BOOKING.updateMany(
+            { _id: { $in: oldBilling.fulfilledReservations } },
+            { status: "Hold" }
+        );
+    }
+
     // Update Billing
     const updatedBilling = await BILLING.findByIdAndUpdate(
       req.params.id,
@@ -451,6 +479,7 @@ exports.updateBilling = async (req, res) => {
         discountPercent,
         gstEnabled,
         gstPercent,
+        fulfilledReservations: fulfilledReservationIds,
         isDeleted: false 
       }, 
       { new: true }
@@ -543,6 +572,14 @@ exports.deleteBilling = async (req, res) => {
 
     billing.isDeleted = true;
     await billing.save();
+
+    // Revert Associated Reservations to 'Hold'
+    if (billing.fulfilledReservations?.length > 0) {
+        await ORDER_BOOKING.updateMany(
+            { _id: { $in: billing.fulfilledReservations } },
+            { status: "Hold" }
+        );
+    }
 
     res.status(200).json({ success: true, message: "Billing deleted and stock reverted successfully" });
   } catch (error) {

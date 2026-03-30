@@ -89,6 +89,12 @@ let BillingSchema = new Schema(
       type: Number,
       default: 0
     },
+    fulfilledReservations: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "OrderBooking",
+      },
+    ],
     isDeleted: {
       type: Boolean,
       default: false,
