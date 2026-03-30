@@ -48,8 +48,13 @@ exports.getStockReport = async (req, res) => {
         allSizes = [...allSizes, ...missingSizes];
     }
     
-    // Sort all sizes by name
-    allSizes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    // Sort all sizes by defined order, then fallback to name
+    allSizes.sort((a, b) => {
+      const orderA = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
+      const orderB = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     // 3. Aggregate Inventory by Product and Size
     // This is the source of truth used in Product page as well
