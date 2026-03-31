@@ -14,7 +14,7 @@ function groupItems(items) {
       const key = String(prod._id || item.productName || Math.random().toString());
       
       const pieceCount = (prod.sizes && Array.isArray(prod.sizes)) ? prod.sizes.length : (item.qty === 1 ? 1 : 1);
-      const totalPieces = (item.qty || 0) * (pieceCount || 1);
+      const totalPieces = (item.qty || 0);
 
       if (!map.has(key)) {
         map.set(key, {
