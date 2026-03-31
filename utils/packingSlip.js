@@ -13,7 +13,7 @@ const COLS = [
   { h: "Design No", w: 148, align: "center" },
   { h: "Color",     w: 148, align: "center" },
   { h: "Price",     w: 97,  align: "center" },
-  { h: "Pieces",    w: 97,  align: "center" },
+  { h: "Pcs",    w: 97,  align: "center" },
 ];
 const TABLE_W = CONTENT_W;
 
@@ -195,7 +195,7 @@ function generatePackingSlipPDF(billing, res) {
   doc.rect(M, y, TABLE_W, TOTAL_H).lineWidth(1.1).stroke("#000000");
   const totalPieces = grouped.reduce((s, r) => s + (r.pieces || 0), 0);
   doc.fontSize(14).font("Helvetica-Bold").fillColor("#000")
-     .text(`TOTAL PIECES : ${totalPieces}`, M, y + (TOTAL_H - 14) / 2, {
+     .text(`TOTAL QTY : ${totalPieces}`, M, y + (TOTAL_H - 14) / 2, {
        width: TABLE_W - 15, align: "right", lineBreak: false,
      });
 
