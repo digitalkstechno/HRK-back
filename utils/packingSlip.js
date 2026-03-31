@@ -114,7 +114,6 @@ function renderSlip(doc, billing, slipW, slipH) {
   let y = M;
 
   doc.rect(5, 5, slipW - 10, slipH - 10).lineWidth(1.5).stroke("#000000");
-  doc.rect(M, y, CONTENT_W, 2).fill("#000000");
   y += 10;
 
   const logoPath = path.join(__dirname, "..", "public", "hrk_logo.png");
@@ -141,11 +140,15 @@ function renderSlip(doc, billing, slipW, slipH) {
     doc.text(p, slipW - M - 90, y + i * 12, { width: 90, align: "right" });
   });
 
-  doc.fontSize(18).font("Helvetica-Bold").fillColor("#000")
-     .text("PACKING SLIP", M, y + 2, { width: 180 });
+  // Small black tag in top-left corner (joined with border look)
+  doc.rect(5, 5, 120, 20).fill("#000000");
+  doc.fontSize(10).font("Helvetica-Bold").fillColor("#ffffff")
+     .text("PACKING SLIP", 5, 5 + 5, { width: 120, align: "center" });
+
+  doc.fillColor("#000000"); // Reset for other text
+  y = 35; // Start main content after the tag
 
   y += LOGO_H + 15;
-  doc.moveTo(M, y).lineTo(slipW - M, y).lineWidth(1).stroke("#000000");
   y += 8;
 
   const lW = CONTENT_W * 0.6;
@@ -199,18 +202,15 @@ function renderSlip(doc, billing, slipW, slipH) {
   doc.fontSize(12).font("Helvetica-Bold")
      .text(`TOTAL QTY : ${totalPieces}`, M, y + (TOTAL_H - 12) / 2, { width: CONTENT_W - 10, align: "right" });
 
-  const FOOTER_H = 55;
-  const footerY = Math.max(y + TOTAL_H + 5, slipH - M - FOOTER_H);
+  const FOOTER_H = 30;
+  const footerY = Math.max(y + TOTAL_H + 10, slipH - M - FOOTER_H);
+  
+  // Footer box (table look)
   doc.rect(M, footerY, CONTENT_W, FOOTER_H).lineWidth(1).stroke("#000000");
-  doc.fontSize(9).font("Helvetica")
-     .text("1. Received the above goods in good condition.", M + 10, footerY + 8)
-     .text("2. Subject to Surat Jurisdiction.", M + 10, footerY + 20);
+  doc.moveTo(M + CONTENT_W / 2, footerY).lineTo(M + CONTENT_W / 2, footerY + FOOTER_H).lineWidth(1).stroke("#000000");
 
-  doc.moveTo(M, footerY + 34).lineTo(M + CONTENT_W, footerY + 34).lineWidth(0.5).stroke("#bbbbbb");
-  doc.fontSize(10).font("Helvetica-Bold").text("PACKED BY : _______________", M + 10, footerY + 39);
-  doc.text("CHECKED BY : _______________", M + CONTENT_W / 2 + 10, footerY + 39);
-
-  doc.rect(M, Math.min(slipH - 5, footerY + FOOTER_H + 2), CONTENT_W, 2).fill("#000000");
+  doc.fontSize(10).font("Helvetica-Bold").text("PACKED BY : _______________", M + 10, footerY + 10);
+  doc.text("CHECKED BY : _______________", M + CONTENT_W / 2 + 10, footerY + 10);
 }
 
 function generatePackingSlipPDF(billing, res) {
