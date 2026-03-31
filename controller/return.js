@@ -171,7 +171,13 @@ exports.deleteReturn = async (req, res) => {
   try {
     const data = await RETURN.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
     if (!data) return res.status(404).json({ success: false, message: "Return not found" });
-    res.status(200).json({ success: true, message: "Return deleted" });
+
+    // If return is deleted, also delete the corresponding barcode from inventory
+    if (data.barcode) {
+      await INVENTORYITEM.findOneAndUpdate({ barcode: data.barcode }, { isDeleted: true });
+    }
+
+    res.status(200).json({ success: true, message: "Return and associated barcode deleted" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
