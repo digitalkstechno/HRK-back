@@ -116,23 +116,23 @@ function renderSlip(doc, billing, slipW, slipH) {
   doc.rect(5, 5, slipW - 10, slipH - 10).lineWidth(1.5).stroke("#000000");
   y += 10;
 
-  const logoPath = path.join(__dirname, "..", "public", "hrk_logo.png");
-  const LOGO_W = 60, LOGO_H = 30;
+  const logoPath = path.join(__dirname, "..", "public", "HRK.jpg.jpeg");
+  const LOGO_W = 70, LOGO_H = 45;
 
   try {
     if (fs.existsSync(logoPath)) {
-      doc.image(logoPath, slipW / 2 - LOGO_W / 2, y, { width: LOGO_W, height: LOGO_H });
-    } else {
-      doc.fontSize(20).font("Helvetica-Bold").fillColor("#000")
-         .text("HRK", 0, y + 2, { width: slipW, align: "center" });
+      doc.image(logoPath, M, y, { width: LOGO_W, height: LOGO_H });
     }
-  } catch (err) {
-    doc.fontSize(20).font("Helvetica-Bold")
-       .text("HRK", 0, y + 2, { width: slipW, align: "center" });
-  }
+  } catch (err) {}
 
+  doc.fontSize(22).font("Helvetica-Bold").fillColor("#000")
+     .text("SRK FASHION HUB", 0, y + 5, { width: slipW, align: "center" });
+  
   doc.fontSize(8).font("Helvetica").fillColor("#444")
-     .text("GST: 24ADEFS1747D1ZC", 0, y + LOGO_H + 4, { width: slipW, align: "center" });
+     .text("GST: 24ADEFS1747D1ZC", 0, y + 30, { width: slipW, align: "center" });
+
+  doc.fontSize(10).font("Helvetica-Bold").fillColor("#000")
+     .text("PACKING SLIP", 0, y + 42, { width: slipW, align: "center" });
 
   const phones = ["99136 39997", "90332 52577", "97125 34039"];
   doc.fontSize(10).font("Helvetica-Bold").fillColor("#000");
@@ -140,15 +140,8 @@ function renderSlip(doc, billing, slipW, slipH) {
     doc.text(p, slipW - M - 90, y + i * 12, { width: 90, align: "right" });
   });
 
-  // Small black tag in top-left corner (joined with border look)
-  doc.rect(5, 5, 120, 20).fill("#000000");
-  doc.fontSize(10).font("Helvetica-Bold").fillColor("#ffffff")
-     .text("PACKING SLIP", 5, 5 + 5, { width: 120, align: "center" });
-
   doc.fillColor("#000000"); // Reset for other text
-  y = 35; // Start main content after the tag
-
-  y += LOGO_H + 15;
+  y += 60; // Space for header content
   y += 8;
 
   const lW = CONTENT_W * 0.6;
