@@ -94,7 +94,7 @@ function drawTable(doc, startX, startY, cols, rows, HDR_H, ROW_H) {
 }
 
 function renderSlip(doc, billing, slipW, slipH) {
-  const M = 20;
+  const M = 10;
   const CONTENT_W = slipW - M * 2;
   const customer  = (billing && billing.customer) || {};
   const transport = (customer && customer.transport) || {};
@@ -126,23 +126,23 @@ function renderSlip(doc, billing, slipW, slipH) {
   } catch (err) {}
 
   doc.fontSize(22).font("Helvetica-Bold").fillColor("#000")
-     .text("SRK FASHION HUB", 0, y + 5, { width: slipW, align: "center" });
+     .text("SRK FASHION HUB", 0, y + 2, { width: slipW, align: "center" });
   
   doc.fontSize(8).font("Helvetica").fillColor("#444")
-     .text("GST: 24ADEFS1747D1ZC", 0, y + 30, { width: slipW, align: "center" });
+     .text("GST: 24ADEFS1747D1ZC", 0, y + 25, { width: slipW, align: "center" });
 
   doc.fontSize(10).font("Helvetica-Bold").fillColor("#000")
-     .text("PACKING SLIP", 0, y + 42, { width: slipW, align: "center" });
+     .text("PACKING SLIP", 0, y + 40, { width: slipW, align: "center" });
 
   const phones = ["99136 39997", "90332 52577", "97125 34039"];
   doc.fontSize(10).font("Helvetica-Bold").fillColor("#000");
   phones.forEach((p, i) => {
-    doc.text(p, slipW - M - 90, y + i * 12, { width: 90, align: "right" });
+    doc.text(p, slipW - M - 90, y + i * 11, { width: 90, align: "right" });
   });
 
   doc.fillColor("#000000"); // Reset for other text
-  y += 60; // Space for header content
-  y += 8;
+  y += 55; // Space for header content
+  y += 5;
 
   const lW = CONTENT_W * 0.6;
   const rX = M + lW;
