@@ -94,7 +94,7 @@ function drawTable(doc, startX, startY, cols, rows, HDR_H, ROW_H) {
 }
 
 function renderSlip(doc, billing, slipW, slipH) {
-  const M = 10;
+  const M = 18;
   const CONTENT_W = slipW - M * 2;
   const customer  = (billing && billing.customer) || {};
   const transport = (customer && customer.transport) || {};
@@ -111,10 +111,8 @@ function renderSlip(doc, billing, slipW, slipH) {
     { h: "Pcs",       w: Math.max(20, CONTENT_W - 310),  align: "center" }, 
   ];
 
-  let y = M;
-
-  doc.rect(5, 5, slipW - 10, slipH - 10).lineWidth(1.5).stroke("#000000");
-  y += 10;
+  doc.rect(10, 10, slipW - 20, slipH - 20).lineWidth(1.5).stroke("#000000");
+  y = M + 2;
 
   const logoPath = path.join(__dirname, "..", "public", "HRK.jpg.jpeg");
   const LOGO_W = 70, LOGO_H = 45;
@@ -234,13 +232,11 @@ function generatePackingSlipPDF(billing, res) {
     });
 
     try {
-        const halfH = PAGE_H / 2;
-
-        // Render only the first slip in the top half
+        const SLIP_W = 380; // Reduced from halfH (approx 420)
         doc.save();
         doc.translate(PAGE_W, 0);
         doc.rotate(90);
-        renderSlip(doc, billing, halfH, PAGE_W);
+        renderSlip(doc, billing, SLIP_W, PAGE_W);
         doc.restore();
 
         // No more dashed line or second slip as per user request
