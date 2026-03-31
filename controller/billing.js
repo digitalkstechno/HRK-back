@@ -129,7 +129,8 @@ exports.createBilling = async (req, res) => {
 
     // Update Inventory Items status and available sizes
     for (const item of items) {
-        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        const bcode = String(item.barcode).trim();
+        const invItem = await INVENTORYITEM.findOne({ barcode: { $regex: new RegExp(`^${bcode}$`, "i") } });
         if (invItem) {
             // Filter out the sizes being sold in this bill
             const soldSizeIds = (item.soldSizes || []).map(id => id.toString());
@@ -169,10 +170,13 @@ exports.createBilling = async (req, res) => {
 
 exports.scanBarcode = async (req, res) => {
     try {
-        const { barcode } = req.params;
+        const barcode = (req.params.barcode || "").trim();
         
         const item = await INVENTORYITEM.findOne({
-            $or: [{ barcode: barcode }, { sequenceNumber: Number(barcode) || 0 }],
+            $or: [
+                { barcode: { $regex: new RegExp(`^${barcode}$`, "i") } }, 
+                { sequenceNumber: Number(barcode) || 0 }
+            ],
             isDeleted: { $ne: true }
         }).populate({ path: "product", populate: { path: "sizes", select: "name" } })
         .populate({ path: "availableSizes", select: "name" });
@@ -488,7 +492,8 @@ exports.updateBilling = async (req, res) => {
 
     // Mark New Items as 'Sold' or 'Partial'
     for (const item of items) {
-        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        const bcode = String(item.barcode).trim();
+        const invItem = await INVENTORYITEM.findOne({ barcode: { $regex: new RegExp(`^${bcode}$`, "i") } });
         if (invItem) {
             // Filter out the sizes being sold in this bill
             const soldSizeIds = (item.soldSizes || []).map(id => id.toString());
@@ -550,7 +555,8 @@ exports.deleteBilling = async (req, res) => {
 
     // Revert items before deleting bill
     for (const item of billing.items) {
-        const invItem = await INVENTORYITEM.findOne({ barcode: item.barcode });
+        const bcode = String(item.barcode).trim();
+        const invItem = await INVENTORYITEM.findOne({ barcode: { $regex: new RegExp(`^${bcode}$`, "i") } });
         const product = await PRODUCT.findById(invItem.product);
         if (invItem && product) {
             // Add back the sold sizes from the bill
