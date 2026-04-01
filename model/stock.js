@@ -14,7 +14,6 @@ let StockSchema = new Schema(
     },
     invoiceNumber: {
       type: String,
-      required: true,
     },
     items: {
       type: Array,

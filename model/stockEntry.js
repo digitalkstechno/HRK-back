@@ -15,7 +15,6 @@ const stockEntrySchema = new Schema(
     },
     invoiceNumber: {
       type: String,
-      required: true,
     },
     product: {
       type: Schema.Types.ObjectId,
