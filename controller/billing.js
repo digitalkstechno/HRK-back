@@ -38,13 +38,25 @@ exports.createBilling = async (req, res) => {
     
     // Combine all products that are either scanned or reserved
     const allRelevantProductIds = Array.from(new Set([...scannedProductIds, ...reservationRequirements.keys()]));
+    const productsInvolved = await PRODUCT.find({ _id: { $in: allRelevantProductIds } });
+    const uniqueCodes = Array.from(new Set(productsInvolved.map(p => p.productCode)));
 
     const RETURN = require("../model/return");
-    for (const pId of allRelevantProductIds) {
-        const itemQtyInBill = items.filter(i => i.product.toString() === pId).length;
-        const requiredByReservation = reservationRequirements.get(pId) || 0;
-        const productInfo = await PRODUCT.findById(pId).populate("sizes");
+    for (const code of uniqueCodes) {
+        const productsWithSameCode = await PRODUCT.find({ productCode: code });
+        const idsWithSameCode = productsWithSameCode.map(p => p._id.toString());
+        const mongoIdsWithSameCode = idsWithSameCode.map(id => new mongoose.Types.ObjectId(id));
+
+        const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product.toString())).length;
         
+        let requiredByReservation = 0;
+        selectedResDocs.forEach(res => {
+            if (idsWithSameCode.includes(res.product.toString())) {
+                requiredByReservation += res.totalSets;
+            }
+        });
+
+        const productInfo = productsWithSameCode.find(p => !p.isDeleted) || productsWithSameCode[0];
         if (!productInfo) continue;
 
         // FULFILLMENT CHECK: If this product has a selected reservation, it MUST be fully scanned
@@ -57,14 +69,14 @@ exports.createBilling = async (req, res) => {
 
         // 1. Calculate Physical Sets (Minimum across sizes)
         const physicalInInv = await INVENTORYITEM.countDocuments({ 
-            product: pId, 
+            product: { $in: idsWithSameCode }, 
             status: { $in: ["In Stock", "Reserved"] }, 
             isDeleted: { $ne: true } 
         });
         
         const sizeCounts = await Promise.all((productInfo.sizes || []).map(async (s) => {
             const sizeReturnAgg = await RETURN.aggregate([
-                { $match: { product: new mongoose.Types.ObjectId(pId), size: new mongoose.Types.ObjectId(s._id), isDeleted: { $ne: true } } },
+                { $match: { product: { $in: mongoIdsWithSameCode }, size: new mongoose.Types.ObjectId(s._id), isDeleted: { $ne: true } } },
                 { $group: { _id: null, total: { $sum: "$qty" } } },
             ]);
             const sReturn = sizeReturnAgg[0]?.total || 0;
@@ -72,9 +84,9 @@ exports.createBilling = async (req, res) => {
         }));
         const totalPhysicalSets = sizeCounts.length > 0 ? Math.min(...sizeCounts) : physicalInInv;
 
-        // 2. Calculate All Reservations for this product (to prevent over-billing unreserved stock)
+        // 2. Calculate All Reservations for this product code
         const totalReservedAgg = await ORDER_BOOKING.aggregate([
-            { $match: { product: new mongoose.Types.ObjectId(pId), isDeleted: { $ne: true }, status: "Hold" } },
+            { $match: { product: { $in: mongoIdsWithSameCode }, isDeleted: { $ne: true }, status: "Hold" } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
         const totalReservedAll = totalReservedAgg[0]?.total || 0;
@@ -190,6 +202,10 @@ exports.scanBarcode = async (req, res) => {
         }
 
         const product = item.product;
+        // Find all IDs for this code (to handle recreated products)
+        const productsWithSameCode = await PRODUCT.find({ productCode: product.productCode });
+        const idsWithSameCode = productsWithSameCode.map(p => p._id);
+        
         // Check Reservation Quota
         const currentCustomerId = req.query.customerId;
         const alreadyScanned = parseInt(req.query.alreadyScanned) || 0;
@@ -197,19 +213,19 @@ exports.scanBarcode = async (req, res) => {
         const reservationIds = Array.isArray(selectedReservations) ? selectedReservations : [selectedReservations];
 
         const RETURN = require("../model/return");
-        const inStockCount = await INVENTORYITEM.countDocuments({ product: product._id, status: { $in: ["In Stock", "Partial"] }, isDeleted: { $ne: true } });
+        const inStockCount = await INVENTORYITEM.countDocuments({ product: { $in: idsWithSameCode }, status: { $in: ["In Stock", "Partial"] }, isDeleted: { $ne: true } });
         const returnAgg = await RETURN.aggregate([
-            { $match: { product: product._id, isDeleted: { $ne: true } } },
+            { $match: { product: { $in: idsWithSameCode }, isDeleted: { $ne: true } } },
             { $group: { _id: null, total: { $sum: "$qty" } } },
         ]);
         const returnQty = returnAgg[0]?.total || 0;
         const totalPhysicalOnPage = inStockCount + returnQty;
         
-        // Find my reservations (Total for this product)
+        // Find my reservations (Total for this product code)
         const isValideCustomerId = currentCustomerId && currentCustomerId.length === 24;
         const reservesByMeAgg = await ORDER_BOOKING.aggregate([
             { $match: { 
-                product: product._id, 
+                product: { $in: idsWithSameCode }, 
                 customer: isValideCustomerId ? new mongoose.Types.ObjectId(currentCustomerId) : null, 
                 isDeleted: { $ne: true }, 
                 status: "Hold" 
@@ -218,11 +234,11 @@ exports.scanBarcode = async (req, res) => {
         ]);
         const myTotalReservation = reservesByMeAgg[0]?.total || 0;
 
-        // Calculate total for specifically SELECTED reservations for this product
+        // Calculate total for specifically SELECTED reservations for this product code
         const selectedMyReservesAgg = reservationIds.length > 0 ? await ORDER_BOOKING.aggregate([
             { $match: { 
                 _id: { $in: reservationIds.filter(id => id && id.length === 24).map(id => new mongoose.Types.ObjectId(id)) },
-                product: product._id, 
+                product: { $in: idsWithSameCode }, 
                 isDeleted: { $ne: true }, 
                 status: "Hold" 
             } },
@@ -232,7 +248,7 @@ exports.scanBarcode = async (req, res) => {
 
         // Find others' reservations
         const othersReservMatch = { 
-            product: product._id, 
+            product: { $in: idsWithSameCode }, 
             isDeleted: { $ne: true }, 
             status: "Hold" 
         };
@@ -254,17 +270,14 @@ exports.scanBarcode = async (req, res) => {
             availableQuota = selectedReservationTotal;
         } else {
             // SCENARIO 2: Regular scan (must use unreserved stock)
-            // If scanning for a customer, we allow them to scan their OWN reserved stock 
-            // even if not explicitly selected yet (to avoid friction).
             availableQuota = totalPhysicalOnPage - reservedCountOthers; 
-            // We NO LONGER subtract myTotalReservation here if currentCustomerId is present.
         }
 
         if (availableQuota <= alreadyScanned) {
             return res.status(400).json({ 
                 success: false, 
                 message: isReserved 
-                    ? `Order Limit: You already scanned ${alreadyScanned} of the ${myTotalReservation} reserved sets for ${product.productCode}.`
+                    ? `Order Limit: You already scanned ${alreadyScanned} of the ${selectedReservationTotal} reserved sets for ${product.productCode}.`
                     : `Availability Limit: Only ${Math.max(0, availableQuota)} sets of ${product.productCode} are currently available. Remaining stock is reserved by other customers.` 
             });
         }
@@ -379,14 +392,26 @@ exports.updateBilling = async (req, res) => {
 
     const scannedProductIds = Array.from(new Set(items.map(i => i.product.toString())));
     const allRelevantProductIds = Array.from(new Set([...scannedProductIds, ...reservationRequirements.keys()]));
+    const productsInvolved = await PRODUCT.find({ _id: { $in: allRelevantProductIds } });
+    const uniqueCodes = Array.from(new Set(productsInvolved.map(p => p.productCode)));
 
     const RETURN = require("../model/return");
-    for (const pId of allRelevantProductIds) {
-        const itemQtyInBill = items.filter(i => i.product.toString() === pId).length;
-        const oldQtyInBill = oldBilling.items.filter(i => i.product.toString() === pId).length;
-        const requiredByReservation = reservationRequirements.get(pId) || 0;
-        const productInfo = await PRODUCT.findById(pId).populate("sizes");
+    for (const code of uniqueCodes) {
+        const productsWithSameCode = await PRODUCT.find({ productCode: code });
+        const idsWithSameCode = productsWithSameCode.map(p => p._id.toString());
+        const mongoIdsWithSameCode = idsWithSameCode.map(id => new mongoose.Types.ObjectId(id));
+
+        const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product.toString())).length;
+        const oldQtyInBill = oldBilling.items.filter(i => idsWithSameCode.includes(i.product.toString())).length;
         
+        let requiredByReservation = 0;
+        selectedResDocs.forEach(res => {
+            if (idsWithSameCode.includes(res.product.toString())) {
+                requiredByReservation += res.totalSets;
+            }
+        });
+
+        const productInfo = productsWithSameCode.find(p => !p.isDeleted) || productsWithSameCode[0];
         if (!productInfo) continue;
 
         // FULFILLMENT CHECK: If this product has a selected reservation, it MUST be fully scanned
@@ -399,14 +424,14 @@ exports.updateBilling = async (req, res) => {
 
         // 1. Calculate Physical Sets
         const physicalInInv = await INVENTORYITEM.countDocuments({ 
-            product: pId, 
+            product: { $in: idsWithSameCode }, 
             status: { $in: ["In Stock", "Reserved"] }, 
             isDeleted: { $ne: true } 
         });
         
         const sizeCounts = await Promise.all((productInfo.sizes || []).map(async (s) => {
             const sizeReturnAgg = await RETURN.aggregate([
-                { $match: { product: new mongoose.Types.ObjectId(pId), size: new mongoose.Types.ObjectId(s._id), isDeleted: { $ne: true } } },
+                { $match: { product: { $in: mongoIdsWithSameCode }, size: new mongoose.Types.ObjectId(s._id), isDeleted: { $ne: true } } },
                 { $group: { _id: null, total: { $sum: "$qty" } } },
             ]);
             return physicalInInv + (sizeReturnAgg[0]?.total || 0);
@@ -415,7 +440,7 @@ exports.updateBilling = async (req, res) => {
 
         // 2. Calculate All Reservations
         const totalReservedAgg = await ORDER_BOOKING.aggregate([
-            { $match: { product: new mongoose.Types.ObjectId(pId), isDeleted: { $ne: true }, status: "Hold" } },
+            { $match: { product: { $in: mongoIdsWithSameCode }, isDeleted: { $ne: true }, status: "Hold" } },
             { $group: { _id: null, total: { $sum: "$totalSets" } } }
         ]);
         const totalReservedAll = totalReservedAgg[0]?.total || 0;
