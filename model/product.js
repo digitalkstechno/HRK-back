@@ -23,7 +23,6 @@ let ProductSchema = new Schema(
     },
     purchasePrice: {
       type: Number,
-      required: true,
     },
     salePrice: {
       type: Number,
