@@ -13,6 +13,18 @@ let BillingSchema = new Schema(
       ref: "Customer",
       required: false,
     },
+    remarks: {
+      type: String,
+      default: "",
+    },
+    packedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "MyStaff",
+    },
+    checkedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "MyStaff",
+    },
     items: [
       {
         product: {

@@ -151,6 +151,7 @@ function renderSlip(doc, billing, slipW, slipH) {
     { l: ["M/s. :  ",      customerName],         r: ["Bill No :  ",      (billing && billing.billNumber) || ""] },
     { l: ["GST :  ",      (customer && customer.gstNumber) || "-"],    r: ["Date :  ",         dt] },
     { l: ["Transport :  ", (transport && transport.name) || "-"],       r: ["Station :  ", (customer && customer.station) || "-"] },
+    { l: ["Remarks :  ", (billing && billing.remarks) || "-"], r: ["", ""] },
   ];
 
   const lValW = lW - 60;
@@ -164,14 +165,18 @@ function renderSlip(doc, billing, slipW, slipH) {
     const rowH = Math.max(lh, rh) + PADDING * 2;
 
     doc.rect(M, y, CONTENT_W, rowH).lineWidth(1).stroke("#000000");
-    doc.moveTo(rX, y).lineTo(rX, y + rowH).lineWidth(1).stroke("#000000");
+    if (l[0] !== "Remarks :  ") {
+        doc.moveTo(rX, y).lineTo(rX, y + rowH).lineWidth(1).stroke("#000000");
+    }
 
     const ry = y + PADDING;
     doc.font("Helvetica-Bold").text(l[0], M + 8, ry, { width: 55 });
-    doc.font("Helvetica").text(l[1] || "", M + 8 + 55, ry, { width: lValW });
+    doc.font("Helvetica").text(l[1] || "", M + 8 + 55, ry, { width: l[0] === "Remarks :  " ? CONTENT_W - 65 : lValW });
 
-    doc.font("Helvetica-Bold").text(r[0], rX + 8, ry, { width: 55 });
-    doc.font("Helvetica").text(r[1] || "", rX + 8 + 55, ry, { width: rValW });
+    if (r[0]) {
+      doc.font("Helvetica-Bold").text(r[0], rX + 8, ry, { width: 55 });
+      doc.font("Helvetica").text(r[1] || "", rX + 8 + 55, ry, { width: rValW });
+    }
     y += rowH;
   });
 
@@ -200,8 +205,8 @@ function renderSlip(doc, billing, slipW, slipH) {
   doc.rect(M, footerY, CONTENT_W, FOOTER_H).lineWidth(1).stroke("#000000");
   doc.moveTo(M + CONTENT_W / 2, footerY).lineTo(M + CONTENT_W / 2, footerY + FOOTER_H).lineWidth(1).stroke("#000000");
 
-  doc.fontSize(10).font("Helvetica-Bold").text("PACKED BY : _______________", M + 10, footerY + 10);
-  doc.text("CHECKED BY : _______________", M + CONTENT_W / 2 + 10, footerY + 10);
+  doc.fontSize(10).font("Helvetica-Bold").text(`PACKED BY : ${((billing && billing.packedBy && billing.packedBy.name) || "_______________")}`, M + 10, footerY + 10);
+  doc.text(`CHECKED BY : ${((billing && billing.checkedBy && billing.checkedBy.name) || "_______________")}`, M + CONTENT_W / 2 + 10, footerY + 10);
 }
 
 function generatePackingSlipPDF(billing, res) {

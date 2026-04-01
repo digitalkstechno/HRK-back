@@ -20,4 +20,5 @@ router.use("/sizemaster", require("./sizemaster"));
 router.use("/staff", require("./staff"));
 router.use("/stock", require("./stock"));
 router.use("/order-booking", require("./orderBooking"));
+router.use("/mystaff", require("./mystaff"));
 module.exports = router;

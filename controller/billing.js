@@ -15,6 +15,9 @@ exports.createBilling = async (req, res) => {
       discountPercent, 
       gstEnabled, 
       gstPercent,
+      remarks,
+      packedBy,
+      checkedBy,
       fulfilledReservationIds = []
     } = req.body;
     
@@ -136,6 +139,9 @@ exports.createBilling = async (req, res) => {
         discountPercent,
         gstEnabled,
         gstPercent,
+        remarks,
+        packedBy,
+        checkedBy,
         fulfilledReservations: fulfilledReservationIds
     });
 
@@ -322,6 +328,8 @@ exports.fetchAllBillings = async (req, res) => {
     const totalRecords = await BILLING.countDocuments(query);
     const data = await BILLING.find(query)
       .populate({ path: "customer", populate: { path: "transport" } })
+      .populate("packedBy")
+      .populate("checkedBy")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
@@ -346,6 +354,8 @@ exports.fetchBillingById = async (req, res) => {
   try {
     const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
       .populate({ path: "customer", populate: { path: "transport" } })
+      .populate("packedBy")
+      .populate("checkedBy")
       .populate({ path: "items.product", populate: { path: "sizes", select: "name" } })
       .populate({ path: "fulfilledReservations", populate: { path: "product", populate: { path: "sizes" } } });
     if (!billing) {
@@ -367,6 +377,9 @@ exports.updateBilling = async (req, res) => {
       discountPercent,
       gstEnabled,
       gstPercent,
+      remarks,
+      packedBy,
+      checkedBy,
       fulfilledReservationIds = []
     } = req.body;
     
@@ -509,6 +522,9 @@ exports.updateBilling = async (req, res) => {
         discountPercent,
         gstEnabled,
         gstPercent,
+        remarks,
+        packedBy,
+        checkedBy,
         fulfilledReservations: fulfilledReservationIds,
         isDeleted: false 
       }, 
@@ -561,6 +577,8 @@ exports.generatePackingSlip = async (req, res) => {
   try {
     const billing = await BILLING.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
       .populate({ path: "customer", populate: { path: "transport" } })
+      .populate("packedBy")
+      .populate("checkedBy")
       .populate({ path: "items.product", populate: { path: "sizes", model: "SizeMaster", select: "name" } });
     if (!billing) {
       return res.status(404).json({ success: false, message: "Billing not found" });
