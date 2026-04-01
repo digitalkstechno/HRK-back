@@ -3,6 +3,7 @@ let BILLING = require("../model/billing");
 let INVENTORYITEM = require("../model/inventoryItem");
 let PRODUCT = require("../model/product");
 let ORDER_BOOKING = require("../model/orderBooking");
+let RETURN = require("../model/return");
 const { generatePackingSlipPDF } = require("../utils/packingSlip");
 
 exports.createBilling = async (req, res) => {
@@ -54,8 +55,7 @@ exports.createBilling = async (req, res) => {
     ]);
     const physicalCountMap = Object.fromEntries(physicalCountsAgg.map(p => [p._id.toString(), p.count]));
 
-    // 2. Fetch return counts for all involved sizes at once
-    const RETURN = require("../model/return");
+    // 2. Fetch return counts (RETURN model is now globally defined at the top of the file)
     const returnCountsAgg = await RETURN.aggregate([
         { $match: { product: { $in: allRelevantMongoIds }, isDeleted: { $ne: true } } },
         { $group: { _id: { product: "$product", size: "$size" }, total: { $sum: "$qty" } } }
