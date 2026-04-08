@@ -26,6 +26,11 @@ let StaffSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    role: {
+      type: String,
+      enum: ["admin", "staff"],
+      default: "staff",
+    },
   },
   { timestamps: true },
 );

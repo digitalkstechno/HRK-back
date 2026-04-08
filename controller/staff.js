@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 
 exports.createStaff = async (req, res) => {
   try {
-    const { fullName, email, password } = req.body;
+    const { fullName, email, password, role } = req.body;
 
     const hashedPassword = crypto.createHash("sha256").update(password).digest("hex");
 
@@ -13,6 +13,7 @@ exports.createStaff = async (req, res) => {
       email,
       status: "active",
       password: hashedPassword,
+      role: role || "staff",
     };
 
     const staffDetails = await STAFF.create(staffData);
