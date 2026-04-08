@@ -104,10 +104,10 @@ function drawSlipBlock(doc, billing, offsetX, slipW, slipH, tableRows, totalPiec
   const HDR_H = 25;
   const COLS = [
     { h: "Sr.",       w: 30,  align: "center" },
-    { h: "Design No", w: 105, align: "center" },
-    { h: "Color",     w: 105, align: "center" },
-    { h: "Price",     w: 70,  align: "center" },
-    { h: "Pcs",       w: Math.max(20, CONTENT_W - 310), align: "center" },
+    { h: "Design No", w: billing.showPrice ? 105 : 140, align: "center" },
+    { h: "Color",     w: billing.showPrice ? 105 : 140, align: "center" },
+    ...(billing.showPrice ? [{ h: "Price", w: 70, align: "center" }] : []),
+    { h: "Pcs",       w: Math.max(20, CONTENT_W - (billing.showPrice ? 310 : 310)), align: "center" },
   ];
 
   const customer  = (billing && billing.customer) || {};
@@ -200,13 +200,16 @@ function renderSlip(doc, billing, slipW, slipH) {
   const grouped = groupItems(billing && billing.items);
   const totalPieces = grouped.reduce((s, r) => s + (r.pieces || 0), 0);
 
-  const tableRows = grouped.map((row, idx) => [
-    String(idx + 1),
-    row.designNo || "",
-    row.sku || "",
-    String(row.price || 0),
-    String(row.pieces || 0),
-  ]);
+  const tableRows = grouped.map((row, idx) => {
+    const arr = [
+      String(idx + 1),
+      row.designNo || "",
+      row.sku || "",
+    ];
+    if (billing.showPrice) arr.push(String(row.price || 0));
+    arr.push(String(row.pieces || 0));
+    return arr;
+  });
 
   // Calculate how many rows fit in one slip
   // Approximate header height: logo+title+phones=60, infoRows~4*22=88, gap=10 => ~158

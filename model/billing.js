@@ -111,6 +111,10 @@ let BillingSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    showPrice: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );

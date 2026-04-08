@@ -19,6 +19,7 @@ exports.createBilling = async (req, res) => {
       remarks,
       packedBy,
       checkedBy,
+      showPrice = true,
       fulfilledReservationIds = []
     } = req.body;
     
@@ -157,6 +158,7 @@ exports.createBilling = async (req, res) => {
         remarks,
         packedBy,
         checkedBy,
+        showPrice,
         fulfilledReservations: fulfilledReservationIds
     });
 
@@ -407,6 +409,7 @@ exports.updateBilling = async (req, res) => {
       remarks,
       packedBy,
       checkedBy,
+      showPrice = true,
       fulfilledReservationIds = []
     } = req.body;
     
@@ -581,6 +584,7 @@ exports.updateBilling = async (req, res) => {
         remarks,
         packedBy,
         checkedBy,
+        showPrice,
         fulfilledReservations: fulfilledReservationIds,
         isDeleted: false 
       }, 
