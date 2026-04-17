@@ -7,7 +7,7 @@ const mongoose = require("mongoose");
 
 exports.createStockEntry = async (req, res) => {
   try {
-    const { entryDate, supplier, invoiceNumber, product: productId, totalSets, partialSets = [] } = req.body;
+    const { entryDate, supplier, invoiceNumber, product: productId, totalSets, expectedSets, partialSets = [], linkedPendingEntryId } = req.body;
 
     const product = await PRODUCT.findOne({ _id: productId, isDeleted: { $ne: true } }).populate("sizes");
     if (!product) {
@@ -40,16 +40,24 @@ exports.createStockEntry = async (req, res) => {
     const partialSetsItems = partialSets.reduce((sum, set) => sum + (set.sizes?.length || 0), 0);
     const totalItemsCount = fullSetsItems + partialSetsItems;
 
+    const actualSets = totalBarcodes;
+    const expected = expectedSets ? parseInt(expectedSets) : actualSets;
+    // If linked to a pending entry, this child entry itself has no pending (parent tracks it)
+    const pendingQuantity = linkedPendingEntryId ? 0 : Math.max(0, expected - actualSets);
+
     // Create Stock Entry Record
     const stockEntry = await STOCKENTRY.create({
       entryDate,
       supplier,
       invoiceNumber,
       product: productId,
-      totalSets: totalBarcodes, // Total barcodes created
+      expectedSets: expected,
+      totalSets: actualSets,
+      pendingQuantity,
       totalItems: totalItemsCount,
       startSequence,
       endSequence,
+      linkedPendingEntryId: linkedPendingEntryId || null,
       addedBy: req.user?._id
     });
 
@@ -89,6 +97,20 @@ exports.createStockEntry = async (req, res) => {
     }
 
     await INVENTORYITEM.insertMany(inventoryItems);
+
+    // If this entry was created from a pending entry, update parent's received count and recalculate pending
+    if (linkedPendingEntryId) {
+      // Walk up to root entry (in case of chained entries)
+      let rootEntry = await STOCKENTRY.findById(linkedPendingEntryId);
+      while (rootEntry?.linkedPendingEntryId) {
+        rootEntry = await STOCKENTRY.findById(rootEntry.linkedPendingEntryId);
+      }
+      if (rootEntry) {
+        rootEntry.totalSets = rootEntry.totalSets + actualSets;
+        rootEntry.pendingQuantity = Math.max(0, rootEntry.expectedSets - rootEntry.totalSets);
+        await rootEntry.save();
+      }
+    }
 
     res.status(201).json({ 
       success: true, 
@@ -139,6 +161,7 @@ exports.fetchAllStockEntries = async (req, res) => {
       STOCKENTRY.find(query)
         .populate({ path: "product", populate: { path: "sizes" } })
         .populate("supplier")
+        .populate({ path: "linkedPendingEntryId", select: "entryDate invoiceNumber expectedSets totalSets pendingQuantity" })
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })

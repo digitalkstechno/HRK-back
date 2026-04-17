@@ -21,9 +21,17 @@ const stockEntrySchema = new Schema(
       ref: "Product",
       required: true,
     },
+    expectedSets: {
+      type: Number,
+      default: 0,
+    },
     totalSets: {
       type: Number,
       required: true,
+    },
+    pendingQuantity: {
+      type: Number,
+      default: 0,
     },
     totalItems: {
         type: Number, // Calculated: sets * sizes.length
@@ -36,6 +44,11 @@ const stockEntrySchema = new Schema(
     endSequence: {
       type: Number,
       required: true,
+    },
+    linkedPendingEntryId: {
+      type: Schema.Types.ObjectId,
+      ref: "StockEntry",
+      default: null,
     },
     addedBy: {
       type: Schema.Types.ObjectId,

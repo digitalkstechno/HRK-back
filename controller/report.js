@@ -3,6 +3,7 @@ const SIZEMASTER = require("../model/sizemaster");
 const INVENTORYITEM = require("../model/inventoryItem");
 const CATEGORY = require("../model/categorymaster");
 const RETURN = require("../model/return");
+const STOCKENTRY = require("../model/stockEntry");
 
 // GET /report/stock
 exports.getStockReport = async (req, res) => {
@@ -107,6 +108,103 @@ exports.getStockReport = async (req, res) => {
     });
 
     res.status(200).json({ success: true, data: { sizes: allSizes, rows } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /report/pending-stock
+exports.getPendingStockReport = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    const query = {
+      isDeleted: { $ne: true },
+      pendingQuantity: { $gt: 0 },
+      linkedPendingEntryId: null  // Only root entries
+    };
+
+    if (search) {
+      const matchingProducts = await PRODUCT.find({
+        isDeleted: { $ne: true },
+        $or: [
+          { designNo: { $regex: search, $options: "i" } },
+          { sku: { $regex: search, $options: "i" } },
+          { productCode: { $regex: search, $options: "i" } },
+        ]
+      }).select("_id");
+
+      const productIds = matchingProducts.map(p => p._id);
+      query.$or = [
+        { invoiceNumber: { $regex: search, $options: "i" } },
+        { product: { $in: productIds } }
+      ];
+    }
+
+    const pendingEntries = await STOCKENTRY.find(query)
+      .populate({ path: "product", populate: { path: "sizes category" } })
+      .populate("supplier")
+      .sort({ entryDate: -1 });
+
+    // Fetch history (child entries) for each root entry
+    const entryIds = pendingEntries.map(e => e._id);
+    const childEntries = await STOCKENTRY.find({
+      linkedPendingEntryId: { $in: entryIds },
+      isDeleted: { $ne: true }
+    }).sort({ createdAt: 1 });
+
+    const childMap = {};
+    childEntries.forEach(c => {
+      const key = c.linkedPendingEntryId.toString();
+      if (!childMap[key]) childMap[key] = [];
+      childMap[key].push({
+        _id: c._id,
+        entryDate: c.entryDate,
+        totalSets: c.totalSets,
+        invoiceNumber: c.invoiceNumber,
+        createdAt: c.createdAt
+      });
+    });
+
+    const enriched = pendingEntries.map(e => ({
+      ...e.toObject(),
+      history: childMap[e._id.toString()] || []
+    }));
+
+    const summary = {
+      totalPendingEntries: enriched.length,
+      totalPendingSets: enriched.reduce((sum, e) => sum + e.pendingQuantity, 0),
+      totalExpectedSets: enriched.reduce((sum, e) => sum + e.expectedSets, 0),
+      totalReceivedSets: enriched.reduce((sum, e) => sum + e.totalSets, 0)
+    };
+
+    res.status(200).json({ success: true, data: enriched, summary });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /report/pending-stock-by-product/:productId
+exports.getPendingStockByProduct = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    const pendingEntries = await STOCKENTRY.find({
+      product: productId,
+      isDeleted: { $ne: true },
+      pendingQuantity: { $gt: 0 },
+      linkedPendingEntryId: null  // Only root entries
+    })
+      .populate("supplier")
+      .sort({ entryDate: -1 });
+
+    const totalPending = pendingEntries.reduce((sum, e) => sum + e.pendingQuantity, 0);
+
+    res.status(200).json({ 
+      success: true, 
+      data: pendingEntries,
+      totalPending
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
