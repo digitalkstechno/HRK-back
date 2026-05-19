@@ -441,3 +441,57 @@ exports.markSizeLost = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.getBarcodeHistory = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const BILLING = require("../model/billing");
+        const RETURN = require("../model/return");
+
+        const item = await INVENTORYITEM.findById(id)
+            .populate({ path: "product", populate: { path: "sizes" } })
+            .populate({ path: "stockEntry", populate: { path: "supplier" } })
+            .populate("availableSizes")
+            .populate("lostSizes")
+            .populate("initialSizes");
+
+        if (!item) {
+            return res.status(404).json({ success: false, message: "Inventory Item not found" });
+        }
+
+        let returnEntries = [];
+        if (item.isReturn) {
+            returnEntries = await RETURN.find({ barcode: item.barcode, isDeleted: { $ne: true } }).populate("size");
+        }
+
+        const salesEntries = await BILLING.find({ "items.barcode": item.barcode, isDeleted: { $ne: true } })
+            .populate("customer")
+            .populate("items.soldSizes");
+
+        const formattedSales = salesEntries.map(bill => {
+            const billItem = bill.items.find(i => i.barcode === item.barcode);
+            return {
+                _id: bill._id,
+                billNumber: bill.billNumber,
+                customer: bill.customer,
+                createdAt: bill.createdAt,
+                soldSizes: billItem ? billItem.soldSizes : [],
+                qty: billItem ? billItem.qty : 0,
+                price: billItem ? billItem.price : 0,
+                total: billItem ? billItem.total : 0
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                item,
+                returns: returnEntries,
+                sales: formattedSales
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
