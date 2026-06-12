@@ -77,7 +77,8 @@ exports.createBilling = async (req, res) => {
         for (const productInfo of productsInvolved) {
             const pId = productInfo._id.toString();
 
-            const itemQtyInBill = items.filter(i => i.product.toString() === pId).length;
+            const isFullSet = (i) => (i.originalQty || i.qty || 1) >= (productInfo.sizes?.length || 1);
+            const itemQtyInBill = items.filter(i => i.product.toString() === pId && isFullSet(i)).length;
             
             let requiredByReservation = reservationRequirements.get(pId) || 0;
 
@@ -231,7 +232,7 @@ exports.scanBarcode = async (req, res) => {
         const selectedReservations = req.query.selectedReservations || [];
         const reservationIds = Array.isArray(selectedReservations) ? selectedReservations : [selectedReservations];
 
-        const inStockCount = await INVENTORYITEM.countDocuments({ product: pId, status: { $in: ["In Stock", "Partial"] }, isDeleted: { $ne: true } });
+        const inStockCount = await INVENTORYITEM.countDocuments({ product: pId, status: { $in: ["In Stock", "Reserved"] }, isDeleted: { $ne: true } });
         const returnAgg = await RETURN.aggregate([
             { $match: { product: pId, isDeleted: { $ne: true } } },
             { $group: { _id: null, total: { $sum: "$qty" } } },
@@ -289,7 +290,9 @@ exports.scanBarcode = async (req, res) => {
             availableQuota = Math.max(0, totalPhysicalOnPage - reservedCountOthers) + oldQtyInBill; 
         }
 
-        if (availableQuota <= alreadyScanned) {
+        const isPartialItem = (item.availableSizes?.length || product.sizes?.length || 1) < (product.sizes?.length || 1);
+
+        if (!isPartialItem && availableQuota <= alreadyScanned) {
             return res.status(400).json({ 
                 success: false, 
                 message: isReserved 
@@ -451,8 +454,13 @@ exports.updateBilling = async (req, res) => {
             const productsWithSameCode = allProductsWithSameCodes.filter(p => p.productCode === code);
             const idsWithSameCode = productsWithSameCode.map(p => p._id.toString());
 
-            const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product.toString())).length;
-            const oldQtyInBill = oldBilling.items.filter(i => idsWithSameCode.includes(i.product.toString())).length;
+            const productInfo = productsWithSameCode[0];
+            if (!productInfo) continue;
+
+            const isFullSet = (i) => (i.originalQty || i.qty || 1) >= (productInfo.sizes?.length || 1);
+
+            const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product.toString()) && isFullSet(i)).length;
+            const oldQtyInBill = oldBilling.items.filter(i => idsWithSameCode.includes(i.product.toString()) && isFullSet(i)).length;
 
             let requiredByReservation = 0;
             selectedResDocs.forEach(res => {
