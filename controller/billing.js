@@ -269,15 +269,24 @@ exports.scanBarcode = async (req, res) => {
         ]);
         const reservedCountOthers = reservesByOthers[0]?.total || 0;
 
+        const billId = req.query.billId;
+        let oldQtyInBill = 0;
+        if (billId && billId.length === 24) {
+            const oldBilling = await BILLING.findById(billId);
+            if (oldBilling) {
+                oldQtyInBill = oldBilling.items.filter(i => i.product.toString() === pId.toString()).length;
+            }
+        }
+
         let availableQuota;
         let isReserved = selectedReservationTotal > 0;
         
         if (isReserved) {
             // SCENARIO 1: User is filling SPECIFIC selected reservation rows
-            availableQuota = selectedReservationTotal;
+            availableQuota = selectedReservationTotal + oldQtyInBill;
         } else {
             // SCENARIO 2: Regular scan (must use unreserved stock)
-            availableQuota = totalPhysicalOnPage - reservedCountOthers; 
+            availableQuota = Math.max(0, totalPhysicalOnPage - reservedCountOthers) + oldQtyInBill; 
         }
 
         if (availableQuota <= alreadyScanned) {
