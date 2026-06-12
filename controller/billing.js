@@ -469,8 +469,7 @@ exports.updateBilling = async (req, res) => {
                 }
             });
 
-            const productInfo = productsWithSameCode[0];
-            if (!productInfo) continue;
+
 
             if (requiredByReservation > 0 && itemQtyInBill < requiredByReservation) {
                 return res.status(400).json({
