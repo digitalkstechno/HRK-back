@@ -217,16 +217,32 @@ function renderSlip(doc, billing, slipW, slipH) {
   const availableForTable = slipH - M - approxHeaderH - TOTAL_H - FOOTER_H - 20;
   const maxRows = Math.max(1, Math.floor((availableForTable - HDR_H) / ROW_H));
 
-  const firstChunk  = tableRows.slice(0, maxRows);
-  const secondChunk = tableRows.slice(maxRows);
+  const chunks = [];
+  for (let i = 0; i < tableRows.length; i += maxRows) {
+    chunks.push(tableRows.slice(i, i + maxRows));
+  }
+  if (chunks.length === 0) chunks.push([]);
 
-  // Draw first slip on left half
-  drawSlipBlock(doc, billing, 0, slipW, slipH, firstChunk, totalPieces, true);
+  for (let i = 0; i < chunks.length; i += 2) {
+    if (i > 0) {
+      doc.addPage({ size: "A4", margin: 0, layout: "portrait" });
+    }
 
-  // If overflow, draw second slip on right half of same page
-  if (secondChunk.length > 0) {
-    const rightOffsetX = slipW + SLIP_GAP;
-    drawSlipBlock(doc, billing, rightOffsetX, slipW, slipH, secondChunk, totalPieces, false);
+    doc.save();
+    doc.translate(slipH, 0); // slipH here corresponds to PAGE_W which is 595.28
+    doc.rotate(90);
+
+    const firstChunk = chunks[i];
+    const secondChunk = chunks[i + 1];
+
+    drawSlipBlock(doc, billing, 0, slipW, slipH, firstChunk, totalPieces, true);
+
+    if (secondChunk && secondChunk.length > 0) {
+      const rightOffsetX = slipW + SLIP_GAP;
+      drawSlipBlock(doc, billing, rightOffsetX, slipW, slipH, secondChunk, totalPieces, false);
+    }
+
+    doc.restore();
   }
 }
 
@@ -261,11 +277,7 @@ function generatePackingSlipPDF(billing, res) {
         // A4 landscape width = PAGE_H = 841.89
         // Two slips side by side with gap: SLIP_W*2 + SLIP_GAP <= PAGE_H
         const SLIP_W = Math.floor((PAGE_H - SLIP_GAP) / 2); // ~415 each
-        doc.save();
-        doc.translate(PAGE_W, 0);
-        doc.rotate(90);
         renderSlip(doc, billing, SLIP_W, PAGE_W);
-        doc.restore();
         doc.end();
     } catch (err) {
         console.error("PDF GENERATION FATAL ERROR:", err.message);
