@@ -332,11 +332,26 @@ exports.fetchAllBillings = async (req, res) => {
         const search = req.query.search || "";
 
         const query = {
-            isDeleted: { $ne: true },
-            $or: [
-                { billNumber: { $regex: search, $options: "i" } },
-            ],
+            isDeleted: { $ne: true }
         };
+
+        if (search) {
+            const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const CUSTOMER = require("../model/customer");
+            
+            const customerIds = await CUSTOMER.find({
+                $or: [
+                    { name: { $regex: escapedSearch, $options: "i" } },
+                    { number: { $regex: escapedSearch, $options: "i" } },
+                    { phone: { $regex: escapedSearch, $options: "i" } }
+                ]
+            }).distinct("_id");
+
+            query.$or = [
+                { billNumber: { $regex: escapedSearch, $options: "i" } },
+                { customer: { $in: customerIds } }
+            ];
+        }
 
         const totalRecords = await BILLING.countDocuments(query);
         const data = await BILLING.find(query)

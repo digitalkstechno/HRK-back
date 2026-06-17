@@ -113,7 +113,7 @@ exports.fetchAllOrderBookings = async (req, res) => {
       .populate({ path: "product", populate: { path: "sizes" } })
       .skip(skip)
       .limit(limit)
-      .sort({ createdAt: -1 });
+      .sort({ status: -1, createdAt: -1 });
 
     res.status(200).json({
       success: true,
