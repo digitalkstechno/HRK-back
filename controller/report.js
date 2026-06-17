@@ -4,6 +4,8 @@ const INVENTORYITEM = require("../model/inventoryItem");
 const CATEGORY = require("../model/categorymaster");
 const RETURN = require("../model/return");
 const STOCKENTRY = require("../model/stockEntry");
+const BILLING = require("../model/billing");
+const mongoose = require("mongoose");
 
 // GET /report/stock
 exports.getStockReport = async (req, res) => {
@@ -204,6 +206,203 @@ exports.getPendingStockByProduct = async (req, res) => {
       success: true, 
       data: pendingEntries,
       totalPending
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /report/sales
+exports.getSalesReport = async (req, res) => {
+  try {
+    const { year, startDate, endDate, customerId } = req.query;
+    let matchQuery = { isDeleted: { $ne: true } };
+
+    if (startDate || endDate) {
+      matchQuery.createdAt = {};
+      if (startDate) {
+        matchQuery.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        matchQuery.createdAt.$lte = end;
+      }
+    } else if (year) {
+      const startYear = new Date(`${year}-01-01T00:00:00.000Z`);
+      const endYear = new Date(`${parseInt(year) + 1}-01-01T00:00:00.000Z`);
+      matchQuery.createdAt = { $gte: startYear, $lt: endYear };
+    }
+
+    if (customerId) {
+      matchQuery.customer = new mongoose.Types.ObjectId(customerId);
+    }
+
+    const monthlySales = await BILLING.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m", date: "$createdAt", timezone: "+05:30" }
+          },
+          totalAmount: { $sum: "$totalAmount" },
+          totalSubtotal: { $sum: "$subtotal" },
+          billCount: { $sum: 1 },
+          totalQty: { $sum: { $sum: "$items.qty" } }
+        }
+      },
+      { $sort: { _id: -1 } }
+    ]);
+
+    const summaryAgg = await BILLING.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: null,
+          grandTotalAmount: { $sum: "$totalAmount" },
+          grandTotalSubtotal: { $sum: "$subtotal" },
+          totalBills: { $sum: 1 },
+          totalQty: { $sum: { $sum: "$items.qty" } }
+        }
+      }
+    ]);
+
+    const summary = summaryAgg[0] || {
+      grandTotalAmount: 0,
+      grandTotalSubtotal: 0,
+      totalBills: 0,
+      totalQty: 0
+    };
+
+    res.status(200).json({
+      success: true,
+      data: {
+        monthlySales,
+        summary
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /report/product-sales
+exports.getProductSalesReport = async (req, res) => {
+  try {
+    const { search, category, startDate, endDate, month, customerId } = req.query;
+    
+    let matchQuery = { isDeleted: { $ne: true } };
+    
+    if (startDate || endDate) {
+      matchQuery.createdAt = {};
+      if (startDate) {
+        matchQuery.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        matchQuery.createdAt.$lte = end;
+      }
+    } else if (month) {
+      const [y, m] = month.split("-").map(Number);
+      const startMonth = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+      const endMonth = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+      matchQuery.createdAt = { $gte: startMonth, $lt: endMonth };
+    }
+
+    if (customerId) {
+      matchQuery.customer = new mongoose.Types.ObjectId(customerId);
+    }
+
+    const pipeline = [
+      { $match: matchQuery },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.product",
+          productName: { $first: "$items.productName" },
+          totalQty: { $sum: "$items.qty" },
+          totalRevenue: { $sum: "$items.total" },
+          avgPrice: { $avg: "$items.price" }
+        }
+      }
+    ];
+
+    pipeline.push({
+      $lookup: {
+        from: "products",
+        localField: "_id",
+        foreignField: "_id",
+        as: "productDetails"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$productDetails",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    if (category) {
+      pipeline.push({
+        $match: {
+          "productDetails.category": new mongoose.Types.ObjectId(category)
+        }
+      });
+    }
+
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      pipeline.push({
+        $match: {
+          $or: [
+            { productName: { $regex: escapedSearch, $options: "i" } },
+            { "productDetails.designNo": { $regex: escapedSearch, $options: "i" } },
+            { "productDetails.sku": { $regex: escapedSearch, $options: "i" } },
+            { "productDetails.productCode": { $regex: escapedSearch, $options: "i" } }
+          ]
+        }
+      });
+    }
+
+    pipeline.push({
+      $lookup: {
+        from: "categorymasters",
+        localField: "productDetails.category",
+        foreignField: "_id",
+        as: "categoryDetails"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$categoryDetails",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    pipeline.push({
+      $project: {
+        _id: 1,
+        productName: 1,
+        designNo: { $ifNull: ["$productDetails.designNo", "N/A"] },
+        sku: { $ifNull: ["$productDetails.sku", "N/A"] },
+        productCode: { $ifNull: ["$productDetails.productCode", "N/A"] },
+        category: { $ifNull: ["$categoryDetails.name", "N/A"] },
+        totalQty: 1,
+        totalRevenue: 1,
+        avgPrice: 1
+      }
+    });
+
+    pipeline.push({ $sort: { totalQty: -1 } });
+
+    const productSales = await BILLING.aggregate(pipeline);
+
+    res.status(200).json({
+      success: true,
+      data: productSales
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
