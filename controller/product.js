@@ -28,17 +28,13 @@ exports.fetchAllProducts = async (req, res) => {
       ],
     };
 
-    const [totalRecords, products] = await Promise.all([
-      PRODUCT.countDocuments(query),
-      PRODUCT.find(query)
-        .populate("category")
-        .populate("sizes")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-    ]);
+    const products = await PRODUCT.find(query)
+      .populate("category")
+      .populate("sizes")
+      .sort({ createdAt: -1 })
+      .lean();
 
+    const totalRecords = products.length;
     const productIds = products.map((p) => p._id);
 
     const INVENTORYITEM = require("../model/inventoryItem");
@@ -116,9 +112,24 @@ exports.fetchAllProducts = async (req, res) => {
       };
     });
 
+    // In-memory sort: products with availableSets > 0 first, then availableSets === 0
+    data.sort((a, b) => {
+      const aHasSets = a.availableSets > 0 ? 1 : 0;
+      const bHasSets = b.availableSets > 0 ? 1 : 0;
+      if (aHasSets !== bHasSets) {
+        return bHasSets - aHasSets; // 1 (has sets) comes before 0 (no sets)
+      }
+      // Preserve date sorting within groups
+      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bDate - aDate;
+    });
+
+    const paginatedData = data.slice(skip, skip + limit);
+
     res.status(200).json({
       success: true,
-      data,
+      data: paginatedData,
       pagination: {
         totalRecords,
         currentPage: page,

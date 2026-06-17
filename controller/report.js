@@ -109,6 +109,22 @@ exports.getStockReport = async (req, res) => {
       };
     });
 
+    // In-memory sort: rows with totalQty > 0 first, totalQty === 0 last.
+    rows.sort((a, b) => {
+      const aQty = Object.values(a.sizeCounts).reduce((sum, val) => sum + (val || 0), 0);
+      const bQty = Object.values(b.sizeCounts).reduce((sum, val) => sum + (val || 0), 0);
+      
+      const aHasStock = aQty > 0 ? 1 : 0;
+      const bHasStock = bQty > 0 ? 1 : 0;
+      
+      if (aHasStock !== bHasStock) {
+        return bHasStock - aHasStock; // 1 (has stock) comes first, 0 (no stock) last
+      }
+      
+      // Preserve designNo: 1 sorting order using localeCompare
+      return a.designNo.localeCompare(b.designNo, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     res.status(200).json({ success: true, data: { sizes: allSizes, rows } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
