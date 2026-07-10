@@ -208,12 +208,80 @@ exports.fetchProductDropdown = async (req, res) => {
       ],
     };
 
-    const data = await PRODUCT.find(query)
+    const products = await PRODUCT.find(query)
       .select("productCode designNo sku category sizes")
       .populate("category")
       .populate("sizes")
       .sort({ productCode: 1 })
       .lean();
+
+    const productIds = products.map((p) => p._id);
+    const INVENTORYITEM = require("../model/inventoryItem");
+    const ORDER_BOOKING = require("../model/orderBooking");
+
+    // Aggregate inventory stats per product and per size
+    const inventoryStats = await INVENTORYITEM.aggregate([
+      { 
+        $match: { 
+          product: { $in: productIds }, 
+          isDeleted: { $ne: true } 
+        } 
+      },
+      { $unwind: "$availableSizes" },
+      {
+        $group: {
+          _id: { product: "$product", size: "$availableSizes" },
+          totalAvailable: { 
+            $sum: { $cond: [{ $in: ["$status", ["In Stock", "Partial"]] }, 1, 0] } 
+          },
+          totalReserved: { 
+            $sum: { $cond: [{ $eq: ["$status", "Reserved"] }, 1, 0] } 
+          }
+        }
+      }
+    ]);
+
+    const posReservations = await ORDER_BOOKING.aggregate([
+        { $match: { product: { $in: productIds }, isDeleted: { $ne: true }, status: "Hold" } },
+        { $group: { _id: "$product", total: { $sum: "$totalSets" } } }
+    ]);
+    const posResMap = Object.fromEntries(posReservations.map(r => [r._id.toString(), r.total]));
+
+    const statsMap = {};
+    inventoryStats.forEach(stat => {
+      statsMap[`${stat._id.product}_${stat._id.size}`] = {
+        available: stat.totalAvailable,
+        reserved: stat.totalReserved
+      };
+    });
+
+    const data = products.map((p) => {
+      const pId = p._id.toString();
+      
+      let totalAvailableAcrossSizes = 0;
+
+      const sizesWithCount = (p.sizes || []).map((s) => {
+        const stats = statsMap[`${pId}_${s._id.toString()}`] || { available: 0, reserved: 0 };
+        totalAvailableAcrossSizes += stats.available;
+        return { 
+            ...s, 
+            count: stats.available 
+        };
+      });
+
+      const allCounts = sizesWithCount.map(s => s.count);
+      const physicalMin = allCounts.length > 0 ? Math.min(...allCounts) : 0;
+      
+      const posReservedSets = posResMap[pId] || 0;
+      const finalAvailableSets = Math.max(0, physicalMin - posReservedSets);
+
+      return { 
+        ...p, 
+        sizes: sizesWithCount, 
+        totalInStock: totalAvailableAcrossSizes,
+        availableSets: finalAvailableSets 
+      };
+    });
 
     res.status(200).json({ success: true, data });
   } catch (error) {
