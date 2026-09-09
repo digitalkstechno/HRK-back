@@ -472,7 +472,12 @@ exports.updateBilling = async (req, res) => {
             const productInfo = productsWithSameCode[0];
             if (!productInfo) continue;
 
-            const isFullSet = (i) => (i.originalQty || i.qty || 1) >= (productInfo.sizes?.length || 1);
+            const isFullSet = (i) => {
+                const iId = i.product?._id ? i.product._id.toString() : i.product.toString();
+                const actualProd = productsWithSameCode.find(p => p._id.toString() === iId);
+                const sizeLen = actualProd ? (actualProd.sizes?.length || 1) : (productInfo.sizes?.length || 1);
+                return (i.originalQty || i.qty || 1) >= sizeLen;
+            };
 
             const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product?._id ? i.product._id.toString() : i.product.toString()) && isFullSet(i)).length;
             const oldQtyInBill = oldBilling.items.filter(i => idsWithSameCode.includes(i.product?._id ? i.product._id.toString() : i.product.toString()) && isFullSet(i)).length;
@@ -483,8 +488,6 @@ exports.updateBilling = async (req, res) => {
                     requiredByReservation += res.totalSets;
                 }
             });
-
-
 
             if (requiredByReservation > 0 && itemQtyInBill < requiredByReservation) {
                 return res.status(400).json({
