@@ -425,6 +425,56 @@ exports.getProductSalesReport = async (req, res) => {
   }
 };
 
+// GET /report/product-sales-history/:productId
+exports.getProductSalesHistory = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    const pipeline = [
+      { $match: { isDeleted: { $ne: true } } },
+      { $unwind: "$items" },
+      { $match: { "items.product": new mongoose.Types.ObjectId(productId) } },
+      {
+        $group: {
+          _id: "$customer",
+          totalQty: { $sum: "$items.qty" },
+          totalRevenue: { $sum: "$items.total" },
+        }
+      },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "_id",
+          foreignField: "_id",
+          as: "customerDetails"
+        }
+      },
+      {
+        $unwind: {
+          path: "$customerDetails",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          customerName: { $ifNull: ["$customerDetails.name", "Unknown"] },
+          customerNumber: { $ifNull: ["$customerDetails.number", ""] },
+          totalQty: 1,
+          totalRevenue: 1
+        }
+      },
+      { $sort: { totalQty: -1 } }
+    ];
+
+    const history = await BILLING.aggregate(pipeline);
+
+    res.status(200).json({ success: true, data: history });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Helper function to escape special characters in CSV fields
 const escapeCSV = (val) => {
   if (val === null || val === undefined) return "";

@@ -10,7 +10,8 @@ const {
   exportStockReport,
   exportPendingStockReport,
   exportSalesReport,
-  exportProductSalesReport
+  exportProductSalesReport,
+  getProductSalesHistory
 } = require("../controller/report");
 
 router.get("/stock", authMiddleware, getStockReport);
@@ -22,5 +23,6 @@ router.get("/sales", authMiddleware, getSalesReport);
 router.get("/sales/export", authMiddleware, exportSalesReport);
 router.get("/product-sales", authMiddleware, getProductSalesReport);
 router.get("/product-sales/export", authMiddleware, exportProductSalesReport);
+router.get("/product-sales-history/:productId", authMiddleware, getProductSalesHistory);
 
 module.exports = router;
