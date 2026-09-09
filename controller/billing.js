@@ -39,7 +39,7 @@ exports.createBilling = async (req, res) => {
         });
 
         // 2. Validate Scanned Items against Reservations and Unreserved Stock
-        const scannedProductIds = Array.from(new Set(items.map(i => i.product.toString())));
+        const scannedProductIds = Array.from(new Set(items.map(i => (i.product?._id ? i.product._id.toString() : i.product.toString()))));
 
         // Combine all products that are either scanned or reserved
         const allRelevantProductIds = Array.from(new Set([...scannedProductIds, ...reservationRequirements.keys()]));
@@ -78,7 +78,7 @@ exports.createBilling = async (req, res) => {
             const pId = productInfo._id.toString();
 
             const isFullSet = (i) => (i.originalQty || i.qty || 1) >= (productInfo.sizes?.length || 1);
-            const itemQtyInBill = items.filter(i => i.product.toString() === pId && isFullSet(i)).length;
+            const itemQtyInBill = items.filter(i => (i.product?._id ? i.product._id.toString() : i.product.toString()) === pId && isFullSet(i)).length;
             
             let requiredByReservation = reservationRequirements.get(pId) || 0;
 
@@ -275,7 +275,7 @@ exports.scanBarcode = async (req, res) => {
         if (billId && billId.length === 24) {
             const oldBilling = await BILLING.findById(billId);
             if (oldBilling) {
-                oldQtyInBill = oldBilling.items.filter(i => i.product.toString() === pId.toString()).length;
+                oldQtyInBill = oldBilling.items.filter(i => (i.product?._id ? i.product._id.toString() : i.product.toString()) === pId.toString()).length;
             }
         }
 
@@ -432,7 +432,7 @@ exports.updateBilling = async (req, res) => {
             reservationRequirements.set(pId, (reservationRequirements.get(pId) || 0) + res.totalSets);
         });
 
-        const scannedProductIds = Array.from(new Set(items.map(i => i.product.toString())));
+        const scannedProductIds = Array.from(new Set(items.map(i => (i.product?._id ? i.product._id.toString() : i.product.toString()))));
         const allRelevantProductIds = Array.from(new Set([...scannedProductIds, ...reservationRequirements.keys()]));
 
         // --- OPTIMIZED QUOTA & FULFILLMENT VALIDATION ---
@@ -474,8 +474,8 @@ exports.updateBilling = async (req, res) => {
 
             const isFullSet = (i) => (i.originalQty || i.qty || 1) >= (productInfo.sizes?.length || 1);
 
-            const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product.toString()) && isFullSet(i)).length;
-            const oldQtyInBill = oldBilling.items.filter(i => idsWithSameCode.includes(i.product.toString()) && isFullSet(i)).length;
+            const itemQtyInBill = items.filter(i => idsWithSameCode.includes(i.product?._id ? i.product._id.toString() : i.product.toString()) && isFullSet(i)).length;
+            const oldQtyInBill = oldBilling.items.filter(i => idsWithSameCode.includes(i.product?._id ? i.product._id.toString() : i.product.toString()) && isFullSet(i)).length;
 
             let requiredByReservation = 0;
             selectedResDocs.forEach(res => {
@@ -534,7 +534,7 @@ exports.updateBilling = async (req, res) => {
         if (oldBilling.items?.length > 0) {
             const oldBarcodes = oldBilling.items.map(i => i.barcode);
             const oldInvItems = await INVENTORYITEM.find({ barcode: { $in: oldBarcodes } });
-            const oldProductIds = [...new Set(oldInvItems.map(i => i.product.toString()))];
+            const oldProductIds = [...new Set(oldInvItems.map(i => (i.product?._id ? i.product._id.toString() : i.product.toString())))];
             const oldProducts = await PRODUCT.find({ _id: { $in: oldProductIds } });
 
             const revertOps = [];
